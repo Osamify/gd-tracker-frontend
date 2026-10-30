@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import Link from 'next/link'
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowUpDown,
   Check,
   ChevronDown,
   Clock,
+  Crown,
   Crosshair,
   Flame,
   Gauge,
@@ -28,7 +30,7 @@ import {
   X,
 } from 'lucide-react'
 import { Sidebar } from '@/components/tracker/sidebar'
-import { extractColorsFromImage } from '@/lib/server-colors' 
+// import { extractColorsFromImage } from '@/lib/server-colors' // server-only code can't be imported in a "use client" page: call it from a server component instead
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -75,6 +77,28 @@ const SAMPLE: LevelItem[] = [
   { id: 65633532, name: 'Through The Decay', creator: 'Oskux', demonDifficulty: 'Extreme', rating: 'Epic', progress: 14, totalAttempts: 3233, runs: [r(0, 12), r(0, 6), r(0, 6), r(0, 14), r(22, 74), r(45, 72)], lastPlayedAt: '2026-10-22T21:14:27Z', dateCompleted: null, enjoyment: 8.31, gddpTier: 28.4, totalSeconds: 148 },
   { id: 81257586, name: 'Tidal Wave', creator: 'OniLink', demonDifficulty: 'Extreme', rating: 'Mythic', progress: 10, totalAttempts: 8110, runs: [r(0, 10), r(12, 55), r(40, 69), r(66, 84)], lastPlayedAt: '2026-10-23T21:14:16Z', dateCompleted: null, enjoyment: 8.75, gddpTier: 35.1, totalSeconds: 132 },
   { id: 108387232, name: 'Sakupen Circles', creator: 'DiamondGD', demonDifficulty: 'Insane', rating: 'Legendary', progress: 100, totalAttempts: 341, runs: [r(90, 100)], lastPlayedAt: '2026-10-23T22:56:03Z', dateCompleted: '2026-10-23T22:56:03Z', enjoyment: 8.0, gddpTier: 21.0, totalSeconds: 76 },
+  { id: 89152238, name: 'Choa Chu Kang', creator: 'IAmRozz', demonDifficulty: 'Medium', rating: 'Featured', progress: 0, totalAttempts: 0, runs: [], lastPlayedAt: null, dateCompleted: null, enjoyment: 8.36, gddpTier: 4.9, totalSeconds: 66 },
+  { id: 89379796, name: 'Yellow Snow', creator: 'KerbexGMD', demonDifficulty: 'Easy', rating: 'Featured', progress: 87, totalAttempts: 87, runs: [r(0, 87)], lastPlayedAt: '2026-10-20T18:30:00Z', dateCompleted: null, enjoyment: 7.35, gddpTier: 1.9, totalSeconds: 54 },
+  { id: 83664980, name: 'Lost Love', creator: 'Nexender', demonDifficulty: 'Extreme', rating: 'Legendary', progress: 100, totalAttempts: 4103, runs: [r(0, 38), r(30, 88), r(91, 96), r(91, 98), r(91, 100)], lastPlayedAt: '2026-10-23T01:33:30Z', dateCompleted: '2026-10-23T01:33:30Z', enjoyment: 8.9, gddpTier: 31.2, totalSeconds: 95 },
+  { id: 88909678, name: 'Dream', creator: 'Danze2612', demonDifficulty: 'Hard', rating: 'Featured', progress: 100, totalAttempts: 336, runs: [r(0, 100)], lastPlayedAt: '2026-10-18T16:40:00Z', dateCompleted: '2026-10-18T16:40:00Z', enjoyment: 8.12, gddpTier: 6.6, totalSeconds: 74 },
+  { id: 89131259, name: 'Reflect', creator: 'ImPanther', demonDifficulty: 'Easy', rating: 'Featured', progress: 51, totalAttempts: 51, runs: [r(0, 51), r(30, 51)], lastPlayedAt: '2026-10-26T20:05:00Z', dateCompleted: null, enjoyment: 6.66, gddpTier: 2.0, totalSeconds: 62 },
+  { id: 89425733, name: 'Aeoning', creator: 'Vizitek', demonDifficulty: 'Easy', rating: 'Rated', progress: 94, totalAttempts: 94, runs: [r(0, 60), r(55, 94)], lastPlayedAt: '2026-10-25T09:00:00Z', dateCompleted: null, enjoyment: 6.42, gddpTier: 3.0, totalSeconds: 58 },
+  { id: 88836701, name: 'weird hell', creator: 'IpuNneO', demonDifficulty: 'Easy', rating: 'Featured', progress: 100, totalAttempts: 93, runs: [r(0, 100)], lastPlayedAt: '2026-10-12T13:20:00Z', dateCompleted: '2026-10-12T13:20:00Z', enjoyment: 7.47, gddpTier: 1.9, totalSeconds: 49 },
+  { id: 65633532, name: 'Through The Decay', creator: 'Oskux', demonDifficulty: 'Extreme', rating: 'Epic', progress: 14, totalAttempts: 3233, runs: [r(0, 12), r(0, 6), r(0, 6), r(0, 14), r(22, 74), r(45, 72)], lastPlayedAt: '2026-10-22T21:14:27Z', dateCompleted: null, enjoyment: 8.31, gddpTier: 28.4, totalSeconds: 148 },
+  { id: 81257586, name: 'Tidal Wave', creator: 'OniLink', demonDifficulty: 'Extreme', rating: 'Mythic', progress: 10, totalAttempts: 8110, runs: [r(0, 10), r(12, 55), r(40, 69), r(66, 84)], lastPlayedAt: '2026-10-23T21:14:16Z', dateCompleted: null, enjoyment: 8.75, gddpTier: 35.1, totalSeconds: 132 },
+  { id: 108387232, name: 'Sakupen Circles', creator: 'DiamondGD', demonDifficulty: 'Insane', rating: 'Legendary', progress: 100, totalAttempts: 341, runs: [r(90, 100)], lastPlayedAt: '2026-10-23T22:56:03Z', dateCompleted: '2026-10-23T22:56:03Z', enjoyment: 8.0, gddpTier: 21.0, totalSeconds: 76 },
+  { id: 87850129, name: 'Acheron', creator: 'ryamu', demonDifficulty: 'Extreme', rating: 'Epic', progress: 15, totalAttempts: 1327, runs: [r(0, 15), r(20, 63), r(70, 100)], lastPlayedAt: '2026-10-24T07:59:40Z', dateCompleted: null, enjoyment: 7.2, gddpTier: 27.0, totalSeconds: 104 },
+  { id: 89152238, name: 'Choa Chu Kang', creator: 'IAmRozz', demonDifficulty: 'Medium', rating: 'Featured', progress: 0, totalAttempts: 0, runs: [], lastPlayedAt: null, dateCompleted: null, enjoyment: 8.36, gddpTier: 4.9, totalSeconds: 66 },
+  { id: 89379796, name: 'Yellow Snow', creator: 'KerbexGMD', demonDifficulty: 'Easy', rating: 'Featured', progress: 87, totalAttempts: 87, runs: [r(0, 87)], lastPlayedAt: '2026-10-20T18:30:00Z', dateCompleted: null, enjoyment: 7.35, gddpTier: 1.9, totalSeconds: 54 },
+  { id: 83664980, name: 'Lost Love', creator: 'Nexender', demonDifficulty: 'Extreme', rating: 'Legendary', progress: 100, totalAttempts: 4103, runs: [r(0, 38), r(30, 88), r(91, 96), r(91, 98), r(91, 100)], lastPlayedAt: '2026-10-23T01:33:30Z', dateCompleted: '2026-10-23T01:33:30Z', enjoyment: 8.9, gddpTier: 31.2, totalSeconds: 95 },
+  { id: 88909678, name: 'Dream', creator: 'Danze2612', demonDifficulty: 'Hard', rating: 'Featured', progress: 100, totalAttempts: 336, runs: [r(0, 100)], lastPlayedAt: '2026-10-18T16:40:00Z', dateCompleted: '2026-10-18T16:40:00Z', enjoyment: 8.12, gddpTier: 6.6, totalSeconds: 74 },
+  { id: 89131259, name: 'Reflect', creator: 'ImPanther', demonDifficulty: 'Easy', rating: 'Featured', progress: 51, totalAttempts: 51, runs: [r(0, 51), r(30, 51)], lastPlayedAt: '2026-10-26T20:05:00Z', dateCompleted: null, enjoyment: 6.66, gddpTier: 2.0, totalSeconds: 62 },
+  { id: 89425733, name: 'Aeoning', creator: 'Vizitek', demonDifficulty: 'Easy', rating: 'Rated', progress: 94, totalAttempts: 94, runs: [r(0, 60), r(55, 94)], lastPlayedAt: '2026-10-25T09:00:00Z', dateCompleted: null, enjoyment: 6.42, gddpTier: 3.0, totalSeconds: 58 },
+  { id: 88836701, name: 'weird hell', creator: 'IpuNneO', demonDifficulty: 'Easy', rating: 'Featured', progress: 100, totalAttempts: 93, runs: [r(0, 100)], lastPlayedAt: '2026-10-12T13:20:00Z', dateCompleted: '2026-10-12T13:20:00Z', enjoyment: 7.47, gddpTier: 1.9, totalSeconds: 49 },
+  { id: 65633532, name: 'Through The Decay', creator: 'Oskux', demonDifficulty: 'Extreme', rating: 'Epic', progress: 14, totalAttempts: 3233, runs: [r(0, 12), r(0, 6), r(0, 6), r(0, 14), r(22, 74), r(45, 72)], lastPlayedAt: '2026-10-22T21:14:27Z', dateCompleted: null, enjoyment: 8.31, gddpTier: 28.4, totalSeconds: 148 },
+  { id: 87850129, name: 'Acheron', creator: 'ryamu', demonDifficulty: 'Extreme', rating: 'Epic', progress: 15, totalAttempts: 1327, runs: [r(0, 15), r(20, 63), r(70, 100)], lastPlayedAt: '2026-10-24T07:59:40Z', dateCompleted: null, enjoyment: 7.2, gddpTier: 27.0, totalSeconds: 104 },
+  { id: 81257586, name: 'Tidal Wave', creator: 'OniLink', demonDifficulty: 'Extreme', rating: 'Mythic', progress: 10, totalAttempts: 8110, runs: [r(0, 10), r(12, 55), r(40, 69), r(66, 84)], lastPlayedAt: '2026-10-23T21:14:16Z', dateCompleted: null, enjoyment: 8.75, gddpTier: 35.1, totalSeconds: 132 },
+  { id: 108387232, name: 'Sakupen Circles', creator: 'DiamondGD', demonDifficulty: 'Insane', rating: 'Legendary', progress: 100, totalAttempts: 341, runs: [r(90, 100)], lastPlayedAt: '2026-10-23T22:56:03Z', dateCompleted: '2026-10-23T22:56:03Z', enjoyment: 8.0, gddpTier: 21.0, totalSeconds: 76 },
   { id: 87850129, name: 'Acheron', creator: 'ryamu', demonDifficulty: 'Extreme', rating: 'Epic', progress: 15, totalAttempts: 1327, runs: [r(0, 15), r(20, 63), r(70, 100)], lastPlayedAt: '2026-10-24T07:59:40Z', dateCompleted: null, enjoyment: 7.2, gddpTier: 27.0, totalSeconds: 104 },
   { id: 89152238, name: 'Choa Chu Kang', creator: 'IAmRozz', demonDifficulty: 'Medium', rating: 'Featured', progress: 0, totalAttempts: 0, runs: [], lastPlayedAt: null, dateCompleted: null, enjoyment: 8.36, gddpTier: 4.9, totalSeconds: 66 },
   { id: 89379796, name: 'Yellow Snow', creator: 'KerbexGMD', demonDifficulty: 'Easy', rating: 'Featured', progress: 87, totalAttempts: 87, runs: [r(0, 87)], lastPlayedAt: '2026-10-20T18:30:00Z', dateCompleted: null, enjoyment: 7.35, gddpTier: 1.9, totalSeconds: 54 },
@@ -86,7 +110,9 @@ const SAMPLE: LevelItem[] = [
  *   useEffect(() => { fetch('/api/levels').then(r => r.json()).then(setLevels) }, [])
  */
 function useLevels() {
-  return { levels: SAMPLE, loading: false }
+  // the sample list repeats some levels; keep one per id (also avoids duplicate React keys)
+  const levels = useMemo(() => Array.from(new Map(SAMPLE.map((l) => [l.id, l])).values()), [])
+  return { levels, loading: false }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -108,6 +134,8 @@ const DIFF_STYLE: Record<Difficulty, { chip: string; hue: string }> = {
   Insane: { chip: 'border-pink-400/40 bg-pink-400/10 text-pink-300', hue: 'from-pink-500/40 to-slate-900' },
   Extreme: { chip: 'border-red-500/40 bg-red-500/10 text-red-300', hue: 'from-red-600/40 to-slate-900' },
 }
+
+const DIFF_COLOR: Record<Difficulty, string> = { Easy: '#34d399', Medium: '#facc15', Hard: '#fb923c', Insane: '#f472b6', Extreme: '#ef4444' }
 
 const toTier = (rating: string): Tier => {
   const v = rating.toLowerCase()
@@ -297,7 +325,7 @@ function Chip({
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${active ? tone : 'border-slate-800 bg-white/[0.03] text-slate-400 hover:border-slate-700 hover:text-slate-200'
+      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-xs font-bold transition ${active ? tone : 'border-slate-800 bg-white/[0.03] text-slate-400 hover:border-slate-700 hover:text-slate-200'
         }`}
     >
       {active && <Check className="size-3" />}
@@ -307,59 +335,99 @@ function Chip({
   )
 }
 
-function BestBar({ value, delay = 0, runs }: { value: number; delay?: number; runs?: Run[] }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="relative h-2 overflow-hidden rounded-full bg-slate-800" title={`Best ${value}%`}>
-        <div
-          className="gl-grow h-full rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-pink-500 shadow-[0_0_10px_rgba(139,92,246,0.6)]"
-          style={{ width: `${Math.min(100, value)}%`, animationDelay: `${delay}ms` }}
-        />
-        {[25, 50, 75].map((t) => (
-          <span key={t} className="absolute inset-y-0 w-px bg-[#0a1015]/70" style={{ left: `${t}%` }} />
-        ))}
-      </div>
-      {runs && runs.length > 0 && (
-        <div className="relative h-1 overflow-hidden rounded-full bg-slate-800/70" title="Sections you have practised (brighter = more runs)">
-          {runs.map((x, i) => (
-            <span key={i} className="absolute inset-y-0 rounded-full bg-cyan-300/30" style={{ left: `${x.startPercent}%`, width: `${Math.max(1, x.endPercent - x.startPercent)}%` }} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
+/* Each card gets ONE accent colour: green when beaten, otherwise the colour of its rating tier.
+   The progress bar, the % number, the hover glow and the side line all use it. */
+const TIER_ACCENT: Record<Tier, string> = {
+  rated: '#94a3b8',
+  featured: '#facc15',
+  epic: '#fb923c',
+  legendary: '#f472b6',
+  mythic: '#22d3ee',
 }
+const BEATEN_ACCENT = '#34d399'
+const accentOf = (l: LevelItem) => (isBeaten(l) ? BEATEN_ACCENT : TIER_ACCENT[toTier(l.rating)])
 
-function RunsBadge({ level }: { level: LevelItem }) {
-  if (isBeaten(level)) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-bold text-emerald-300">
-        <Trophy className="size-3" /> Beaten
-      </span>
-    )
-  }
-  if (level.runs.length === 0) {
-    return (
-      <span className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white/[0.03] px-2.5 py-1 text-[11px] font-bold text-slate-400">
-        <Play className="size-3" /> Not started
-      </span>
-    )
-  }
-  const plan = planOf(level.runs)
-  return plan.complete ? (
-    <span className="flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-bold text-cyan-300">
-      <Route className="size-3" /> {plan.count} {plan.count === 1 ? 'run' : 'runs'} to 100%
-    </span>
-  ) : (
-    <span className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-300">
-      <AlertTriangle className="size-3" /> Gap at {plan.gapAt}%
-    </span>
+/** The big % number: white at the top fading into the accent colour. */
+const percentStyle = (accent: string): CSSProperties => ({
+  backgroundImage: `linear-gradient(to bottom, #ffffff 15%, ${accent})`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  color: 'transparent',
+})
+
+function BestBar({ value, delay = 0, accent }: { value: number; delay?: number; accent: string }) {
+  return (
+    <div className="relative h-2 overflow-hidden rounded-full bg-slate-800/80" title={`Best ${value}%`}>
+      <div
+        className="gl-grow h-full rounded-full"
+        style={{
+          width: `${Math.min(100, value)}%`,
+          background: `linear-gradient(to right, ${accent}55, ${accent})`,
+          boxShadow: `0 0 12px ${accent}99`,
+          animationDelay: `${delay}ms`,
+        }}
+      />
+      {[25, 50, 75].map((t) => (
+        <span key={t} className="absolute inset-y-0 w-px bg-[#0a1015]/70" style={{ left: `${t}%` }} />
+      ))}
+    </div>
   )
 }
 
 /* -------------------------------------------------------------------------- */
 /*  Cards                                                                     */
 /* -------------------------------------------------------------------------- */
+
+/* Position in the list you are looking at (follows the current sort and filters).
+   Numbers 1 to 10 each get their own colour and a glow, 11 and up are plain. */
+const TOP10 = [
+  { a: '#fde047', b: '#f59e0b' }, // 1  gold
+  { a: '#f1f5f9', b: '#94a3b8' }, // 2  silver
+  { a: '#fdba74', b: '#ea580c' }, // 3  bronze
+  { a: '#67e8f9', b: '#0891b2' }, // 4  cyan
+  { a: '#a5b4fc', b: '#4f46e5' }, // 5  indigo
+  { a: '#d8b4fe', b: '#9333ea' }, // 6  purple
+  { a: '#f9a8d4', b: '#db2777' }, // 7  pink
+  { a: '#fda4af', b: '#e11d48' }, // 8  rose
+  { a: '#6ee7b7', b: '#059669' }, // 9  emerald
+  { a: '#bef264', b: '#65a30d' }, // 10 lime
+]
+
+function RankBadge({ rank, variant }: { rank: number; variant: 'card' | 'row' }) {
+  const top = TOP10[rank - 1]
+  const title = `Number ${rank} in this list`
+  // gradient + glow for the top 10, glass for the rest
+  const topStyle: CSSProperties | undefined = top
+    ? { background: `linear-gradient(135deg, ${top.a}, ${top.b})`, boxShadow: `0 0 18px -3px ${top.b}, inset 0 1px 0 rgba(255,255,255,0.45)` }
+    : undefined
+
+  if (variant === 'card') {
+    return (
+      <span
+        title={title}
+        className={`relative z-10 flex h-6 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 font-heading text-[11px] font-extrabold tabular-nums ${top ? 'text-[#0a0f14]' : 'border border-white/15 bg-black/55 text-slate-200 backdrop-blur-md'}`}
+        style={topStyle}
+      >
+        {rank === 1 && <Crown className="size-3 fill-current" />}
+        <span>
+          <span className="opacity-60">#</span>
+          {rank}
+        </span>
+      </span>
+    )
+  }
+  // row: a square, a little bigger for the top 10
+  return (
+    <span
+      title={title}
+      className={`relative z-10 grid shrink-0 place-items-center rounded-xl font-heading font-extrabold tabular-nums ${top ? 'size-11 text-lg text-[#0a0f14]' : `size-9 border border-white/10 bg-white/[0.06] text-slate-300 ${rank >= 100 ? 'text-xs' : 'text-sm'}`}`}
+      style={topStyle}
+    >
+      {rank === 1 && <Crown className="absolute -top-2.5 left-1/2 size-4 -translate-x-1/2 fill-yellow-300 text-yellow-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]" />}
+      {rank}
+    </span>
+  )
+}
 
 function StatusBadge({ st }: { st: Status }) {
   const map = {
@@ -377,139 +445,250 @@ function StatusBadge({ st }: { st: Status }) {
   )
 }
 
-function LevelCard({ level, now, index }: { level: LevelItem; now: number | null; index: number }) {
-  const tier = toTier(level.rating)
-  const ts = TIER_STYLE[tier]
-  const live = isLive(level.lastPlayedAt, now)
-  const st = statusOf(level, now)
-  const delay = Math.min(index, 12) * 45
+/** Glow that fades in on hover: a thin accent outline plus a soft shadow under the card. */
+function HoverGlow({ accent }: { accent: string }) {
   return (
-    <Link
-      href={`/levels/${level.id}`}
-      className={`gl-rise group relative flex flex-col overflow-hidden rounded-2xl border bg-[#0a1015]/80 backdrop-blur-xl transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-20px_rgba(34,211,238,0.35)] ${st.kind === 'beaten' ? 'border-emerald-400/30 shadow-[0_0_40px_-18px_rgba(52,211,153,0.6)]' : 'border-white/10'
-        } ${ts.ring}`}
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div className="relative h-40">
-        <Thumb level={level} className="h-full w-full" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a1015] via-[#0a1015]/30 to-transparent" />
-
-        <div className="absolute left-3 top-3">
-          <StatusBadge st={st} />
-        </div>
-        <div className="absolute right-3 top-3 flex items-center gap-1.5">
-          {live ? (
-            <span className="flex items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 backdrop-blur-md">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
-              </span>
-              Playing
-            </span>
-          ) : (
-            level.gddpTier != null && (
-              <span className="rounded-md border border-violet-400/30 bg-violet-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-violet-200 backdrop-blur-md" title="GDDP tier">
-                GDDP {level.gddpTier}
-              </span>
-            )
-          )}
-        </div>
-
-        {/* best % sits on the image */}
-        <div className="absolute bottom-3 right-4 text-right leading-none">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-300/80">Best</div>
-          <div className="bg-gradient-to-r from-cyan-300 via-violet-300 to-pink-300 bg-clip-text font-heading text-4xl font-extrabold tabular-nums text-transparent drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
-            <Num value={level.progress} />%
-          </div>
-        </div>
-
-        <Face difficulty={level.demonDifficulty} tier={tier} className={`gl-float absolute -bottom-7 left-4 z-10 size-[72px] object-contain ${ts.glow}`} />
-      </div>
-
-      <div className="flex flex-1 flex-col gap-3 p-4 pt-2">
-        <div className="min-h-[46px] min-w-0 pl-[84px]">
-          <h3 className="truncate font-heading text-lg font-extrabold text-white transition group-hover:text-cyan-200">{level.name}</h3>
-          <p className="truncate text-sm text-slate-400">
-            by <span className="font-semibold text-slate-300">{level.creator}</span>
-          </p>
-        </div>
-
-        <BestBar value={level.progress} delay={delay + 200} runs={level.runs} />
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <RunsBadge level={level} />
-          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${DIFF_STYLE[level.demonDifficulty].chip}`}>{level.demonDifficulty}</span>
-          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${ts.chip}`}>{ts.label}</span>
-        </div>
-
-        <div className="mt-auto flex items-center justify-between border-t border-slate-800 pt-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5 tabular-nums" title="Total attempts">
-            <Skull className="size-3.5 text-red-400" />
-            {level.totalAttempts.toLocaleString('en-US')}
-          </span>
-          {level.totalSeconds != null && (
-            <span className="flex items-center gap-1.5 tabular-nums" title="Level length">
-              <Clock className="size-3.5 text-cyan-300" />
-              {formatDuration(level.totalSeconds)}
-            </span>
-          )}
-          {level.enjoyment != null && (
-            <span className="flex items-center gap-1.5 tabular-nums" title="Enjoyment">
-              <Star className="size-3.5 text-yellow-300" />
-              {level.enjoyment.toFixed(1)}
-            </span>
-          )}
-          <span className="flex items-center gap-1.5" title="Last played" suppressHydrationWarning>
-            {relativeTime(level.lastPlayedAt, now) || ' '}
-          </span>
-        </div>
-      </div>
-    </Link>
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition duration-300 group-hover:opacity-100"
+      style={{ boxShadow: `inset 0 0 0 1px ${accent}88, 0 22px 50px -24px ${accent}` }}
+    />
   )
 }
 
-function LevelRow({ level, now, index }: { level: LevelItem; now: number | null; index: number }) {
+function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
+  const accent = accentOf(level)
   const live = isLive(level.lastPlayedAt, now)
   const st = statusOf(level, now)
+  const delay = Math.min(index, 12) * 45
+  const beaten = st.kind === 'beaten'
+  const played = relativeTime(level.lastPlayedAt, now)
+
   return (
-    <Link
-      href={`/levels/${level.id}`}
-      className={`gl-rise group flex items-center gap-4 rounded-2xl border bg-[#0a1015]/80 p-3 backdrop-blur-xl transition duration-300 hover:translate-x-1 hover:bg-[#0d141a] ${st.kind === 'beaten' ? 'border-emerald-400/30' : 'border-white/10'
-        } ${ts.ring}`}
-      style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
-    >
-      <Thumb level={level} className="hidden h-16 w-28 shrink-0 rounded-xl sm:block" />
-      <Face difficulty={level.demonDifficulty} tier={tier} className={`size-12 shrink-0 object-contain ${ts.glow}`} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate font-heading text-base font-extrabold text-white group-hover:text-cyan-200">{level.name}</h3>
-          {live && <Radio className="size-3.5 shrink-0 animate-pulse text-emerald-400" />}
+    // the rise animation lives on this wrapper, so the hover lift on the link underneath is not blocked by it
+    <div className="gl-rise" style={{ animationDelay: `${delay}ms` }}>
+      <Link
+        href={`/levels/${level.id}`}
+        className="group relative block aspect-[16/10] min-h-[220px] w-full rounded-2xl border border-white/10 bg-[#0a1015] transition duration-300 hover:-translate-y-1.5"
+        style={beaten ? { borderColor: `${accent}66`, boxShadow: `0 0 40px -20px ${accent}` } : undefined}
+      >
+        <HoverGlow accent={accent} />
+
+        {/* the level picture fills the whole card */}
+        <div className="absolute inset-0 overflow-hidden rounded-2xl">
+          <Thumb level={level} className="h-full w-full" />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${accent}33, transparent 55%)` }} />
+          {/* darkening: from the bottom (for the numbers) and from the left (for the name) */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#070b0e] via-[#070b0e]/30 to-[#070b0e]/20" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#070b0e]/70 via-[#070b0e]/10 to-transparent" />
+          {/* progress: a thin line along the bottom edge */}
+          <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50" title={`Best ${level.progress}%`}>
+            <div
+              className="gl-grow h-full rounded-r-full"
+              style={{ width: `${Math.min(100, level.progress)}%`, background: `linear-gradient(to right, ${accent}66, ${accent})`, boxShadow: `0 0 12px ${accent}` }}
+            />
+          </div>
         </div>
-        <p className="truncate text-xs text-slate-400">
-          by {level.creator} · <span suppressHydrationWarning>{relativeTime(level.lastPlayedAt, now) || ' '}</span>
-        </p>
-      </div>
-      <div className="hidden items-center gap-1.5 lg:flex">
-        <StatusBadge st={st} />
-        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${DIFF_STYLE[level.demonDifficulty].chip}`}>{level.demonDifficulty}</span>
-        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${ts.chip}`}>{ts.label}</span>
-      </div>
-      <div className="hidden w-40 md:block">
-        <BestBar value={level.progress} delay={index * 35} runs={level.runs} />
-      </div>
-      <div className="hidden xl:block">
-        <RunsBadge level={level} />
-      </div>
-      <div className="hidden text-right text-xs tabular-nums text-slate-400 sm:block">
-        <div className="flex items-center justify-end gap-1.5">
-          <Skull className="size-3.5 text-red-400" />
-          {level.totalAttempts.toLocaleString('en-US')}
+
+        {/* big face, like the ladder cards */}
+        <Face
+          difficulty={level.demonDifficulty}
+          tier={tier}
+          className={`pointer-events-none absolute right-3 top-1/2 z-[5] size-28 -translate-y-[55%] object-contain transition duration-500 group-hover:scale-110 sm:size-32 ${ts.glow}`}
+        />
+
+        <div className="relative z-10 flex h-full flex-col justify-between p-4 pb-5">
+          {/* top: rank + status on the left, GDDP or Playing on the right */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <RankBadge rank={rank} variant="card" />
+              <StatusBadge st={st} />
+            </div>
+            {live ? (
+              <span className="flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-400/40 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 backdrop-blur-md">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
+                </span>
+                Playing
+              </span>
+            ) : (
+              level.gddpTier != null && (
+                <span className="flex shrink-0 items-center gap-1 rounded-md border border-violet-400/30 bg-violet-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-violet-100 backdrop-blur-md" title="GDDP tier">
+                  <Gauge className="size-3" />
+                  {level.gddpTier}
+                </span>
+              )
+            )}
+          </div>
+
+          {/* name + creator */}
+          <div className="max-w-[62%]">
+            <h3
+              className="line-clamp-2 font-heading text-2xl font-extrabold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] transition-colors duration-300 group-hover:[color:var(--c)]"
+              style={{ '--c': accent } as CSSProperties}
+            >
+              {level.name}
+            </h3>
+            <p className="truncate text-sm text-slate-200 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+              by <span className="font-semibold text-white">{level.creator}</span>
+            </p>
+          </div>
+
+          {/* bottom: big best %, one small line of numbers, last played on the right */}
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-heading text-5xl font-extrabold leading-none tabular-nums drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]" style={percentStyle(accent)}>
+                <Num value={level.progress} />
+                <span className="text-3xl">%</span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs font-semibold tabular-nums text-slate-200 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+                <span className="flex items-center gap-1" title="Total attempts">
+                  <Skull className="size-3.5 text-red-400" />
+                  {level.totalAttempts.toLocaleString('en-US')}
+                </span>
+                {level.totalSeconds != null && (
+                  <span className="flex items-center gap-1" title="Level length">
+                    <Clock className="size-3.5 text-cyan-300" />
+                    {formatDuration(level.totalSeconds)}
+                  </span>
+                )}
+                {level.enjoyment != null && (
+                  <span className="flex items-center gap-1" title="Enjoyment">
+                    <Star className="size-3.5 text-yellow-300" />
+                    {level.enjoyment.toFixed(1)}
+                  </span>
+                )}
+              </div>
+            </div>
+            <span className="shrink-0 pb-0.5 text-xs font-semibold text-slate-300 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]" title="Last played" suppressHydrationWarning>
+              {played || '\u00a0'}
+            </span>
+          </div>
         </div>
-      </div>
-      <div className="w-14 text-right font-heading text-xl font-extrabold tabular-nums text-white">{level.progress}%</div>
-    </Link>
+      </Link>
+    </div>
+  )
+}
+
+function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
+  const tier = toTier(level.rating)
+  const ts = TIER_STYLE[tier]
+  const accent = accentOf(level)
+  const live = isLive(level.lastPlayedAt, now)
+  const st = statusOf(level, now)
+  const beaten = st.kind === 'beaten'
+  const tries = level.totalAttempts.toLocaleString('en-US')
+  const length = level.totalSeconds != null ? formatDuration(level.totalSeconds) : '—'
+
+  return (
+    <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}>
+      <Link
+        href={`/levels/${level.id}`}
+        className="group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#0a1015]/80 py-3 pl-5 pr-4 backdrop-blur-xl transition duration-300 hover:translate-x-1 hover:bg-[#0d141a]/90 md:flex-row md:items-center md:gap-4"
+        style={beaten ? { borderColor: `${accent}55` } : undefined}
+      >
+        <HoverGlow accent={accent} />
+        
+        {/* 👇 1. THE AMBIENT BACKGROUND (Blurred Level Thumbnail) */}
+        <Thumb 
+          level={level} 
+          className="pointer-events-none absolute inset-0 opacity-[0.15] blur-[6px] scale-110 transition duration-700 group-hover:opacity-30 group-hover:blur-sm group-hover:scale-105" 
+        />
+        
+        {/* 👇 2. DARK GRADIENT OVERLAY (Keeps text readable while showing art on the right) */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a1015]/95 via-[#0a1015]/80 to-[#0a1015]/20 pointer-events-none" />
+
+        {/* accent line on the left edge */}
+        <span className="absolute inset-y-0 left-0 w-1 z-10" style={{ background: `linear-gradient(to bottom, ${accent}, ${accent}33)` }} aria-hidden="true" />
+
+        {/* top line. On phones this is the header of the row, from md up its children join the main row (md:contents). */}
+        <div className="relative z-10 flex min-w-0 items-center gap-3 md:contents">
+          <RankBadge rank={rank} variant="row" />
+
+          <div className="relative hidden h-16 w-32 shrink-0 overflow-hidden rounded-xl sm:block border border-white/10 shadow-lg">
+            <Thumb level={level} className="h-full w-full" />
+            <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${accent}33, transparent 60%)` }} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+          </div>
+
+          <Face difficulty={level.demonDifficulty} tier={tier} className={`size-14 shrink-0 object-contain md:size-14 ${ts.glow}`} />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="truncate font-heading text-base font-extrabold text-white transition-colors duration-300 group-hover:[color:var(--c)] sm:text-lg drop-shadow-md" style={{ '--c': accent } as CSSProperties}>
+                {level.name}
+              </h3>
+              {live && (
+                <span className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-400/40 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-300 backdrop-blur-md">
+                  <Radio className="size-3 animate-pulse" /> Playing
+                </span>
+              )}
+            </div>
+            <p className="truncate text-xs text-slate-300 drop-shadow-sm">
+              by <span className="font-semibold text-white">{level.creator}</span> · <span suppressHydrationWarning>{relativeTime(level.lastPlayedAt, now) || ' '}</span>
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <StatusBadge st={st} />
+            </div>
+          </div>
+
+          {/* % for phones */}
+          <div className="shrink-0 text-right font-heading text-4xl font-extrabold leading-none tabular-nums md:hidden drop-shadow-lg" style={percentStyle(accent)}>
+            {level.progress}%
+          </div>
+        </div>
+
+        {/* phones: bar and numbers on a second line */}
+        <div className="relative z-10 flex items-center gap-3 md:hidden">
+          <div className="min-w-0 flex-1">
+            <BestBar value={level.progress} delay={index * 35} accent={accent} />
+          </div>
+          <span className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-slate-200 drop-shadow-sm">
+            <Skull className="size-3.5 text-red-400" />
+            {tries}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-slate-200 drop-shadow-sm">
+            <Clock className="size-3.5 text-cyan-300" />
+            {length}
+          </span>
+        </div>
+
+        {/* md and up: progress */}
+        <div className="relative z-10 hidden w-52 shrink-0 md:block">
+          <BestBar value={level.progress} delay={index * 35} accent={accent} />
+        </div>
+
+        {/* numbers */}
+        <div className="relative z-10 hidden w-24 shrink-0 flex-col gap-1.5 text-xs tabular-nums text-slate-200 xl:flex drop-shadow-sm">
+          <span className="flex items-center gap-1.5" title="Total attempts">
+            <Skull className="size-3.5 text-red-400" />
+            {tries}
+          </span>
+          <span className="flex items-center gap-1.5" title="Level length">
+            <Clock className="size-3.5 text-cyan-300" />
+            {length}
+          </span>
+        </div>
+        <div className="relative z-10 hidden w-20 shrink-0 flex-col gap-1.5 text-xs tabular-nums text-slate-200 2xl:flex drop-shadow-sm">
+          <span className="flex items-center gap-1.5" title="Enjoyment">
+            <Star className="size-3.5 text-yellow-300" />
+            {level.enjoyment != null ? level.enjoyment.toFixed(1) : '—'}
+          </span>
+          <span className="flex items-center gap-1.5" title="GDDP tier">
+            <Gauge className="size-3.5 text-violet-300" />
+            {level.gddpTier != null ? level.gddpTier : '—'}
+          </span>
+        </div>
+
+        <div className="relative z-10 hidden w-[4.5rem] shrink-0 text-right font-heading text-3xl font-extrabold tabular-nums md:block drop-shadow-lg" style={percentStyle(accent)}>
+          {level.progress}%
+        </div>
+        <ArrowRight className="relative z-10 hidden size-4 shrink-0 text-slate-500 transition duration-300 group-hover:translate-x-1 group-hover:text-white md:block" />
+      </Link>
+    </div>
   )
 }
 
@@ -524,15 +703,16 @@ export default function LevelsPage() {
 
   const [query, setQuery] = useState('')
   const [diffs, setDiffs] = useState<Difficulty[]>([])
-  const [tiers, setTiers] = useState<Tier[]>([])
   const [status, setStatus] = useState<StatusId>('all')
   const [sort, setSort] = useState<SortId>('recent')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [visible, setVisible] = useState(PAGE_SIZE)
   const [sortOpen, setSortOpen] = useState(false)
-  const [filtersOpen, setFiltersOpen] = useState(true)
+  const [diffOpen, setDiffOpen] = useState(false)
   const [now, setNow] = useState<number | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const diffRef = useRef<HTMLDivElement>(null)
+  const sortRef = useRef<HTMLDivElement>(null)
 
   // clock for relative times (after mount, so server and browser agree)
   useEffect(() => {
@@ -548,16 +728,14 @@ export default function LevelsPage() {
       const v = localStorage.getItem('gd-levels-view') as 'grid' | 'list' | null
       if (s && SORTS.some((x) => x.id === s)) setSort(s)
       if (v === 'grid' || v === 'list') setView(v)
-      if (localStorage.getItem('gd-levels-filters') === '0') setFiltersOpen(false)
     } catch { }
   }, [])
   useEffect(() => {
     try {
       localStorage.setItem('gd-levels-sort', sort)
       localStorage.setItem('gd-levels-view', view)
-      localStorage.setItem('gd-levels-filters', filtersOpen ? '1' : '0')
     } catch { }
-  }, [sort, view, filtersOpen])
+  }, [sort, view])
 
   // keyboard: "/" focuses search, Esc clears it
   useEffect(() => {
@@ -568,7 +746,6 @@ export default function LevelsPage() {
         e.preventDefault()
         searchRef.current?.focus()
       }
-      if ((e.key === 'f' || e.key === 'F') && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) setFiltersOpen((o) => !o)
       if (e.key === 'Escape' && el === searchRef.current) {
         setQuery('')
         searchRef.current?.blur()
@@ -578,8 +755,29 @@ export default function LevelsPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // close the popups when you click outside them or press Esc
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (diffRef.current && !diffRef.current.contains(t)) setDiffOpen(false)
+      if (sortRef.current && !sortRef.current.contains(t)) setSortOpen(false)
+    }
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDiffOpen(false)
+        setSortOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onEsc)
+    }
+  }, [])
+
   // go back to the first page whenever the filters change
-  useEffect(() => setVisible(PAGE_SIZE), [query, diffs, tiers, status, sort])
+  useEffect(() => setVisible(PAGE_SIZE), [query, diffs, status, sort])
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
 
@@ -588,7 +786,6 @@ export default function LevelsPage() {
     const out = levels.filter((l) => {
       if (q && !(l.name.toLowerCase().includes(q) || l.creator.toLowerCase().includes(q) || String(l.id).includes(q))) return false
       if (diffs.length && !diffs.includes(l.demonDifficulty)) return false
-      if (tiers.length && !tiers.includes(toTier(l.rating))) return false
       if (status === 'beaten' && !isBeaten(l)) return false
       if (status === 'progress' && (isBeaten(l) || isFresh(l))) return false
       if (status === 'fresh' && !isFresh(l)) return false
@@ -605,7 +802,7 @@ export default function LevelsPage() {
       name: (a, b) => a.name.localeCompare(b.name),
     }
     return [...out].sort(cmp[sort])
-  }, [levels, query, diffs, tiers, status, sort])
+  }, [levels, query, diffs, status, sort])
 
   const stats = useMemo(() => {
     const beaten = levels.filter(isBeaten).length
@@ -632,11 +829,10 @@ export default function LevelsPage() {
     [levels],
   )
 
-  const activeFilters = diffs.length + tiers.length + (status !== 'all' ? 1 : 0) + (query.trim() ? 1 : 0)
+  const activeFilters = diffs.length + (status !== 'all' ? 1 : 0) + (query.trim() ? 1 : 0)
   const reset = () => {
     setQuery('')
     setDiffs([])
-    setTiers([])
     setStatus('all')
   }
 
@@ -652,7 +848,7 @@ export default function LevelsPage() {
         <div className="absolute -bottom-40 left-1/3 size-[34rem] rounded-full bg-pink-500/10 blur-3xl" />
       </div>
 
-      <Sidebar />
+      {/* <Sidebar /> */}
       <div className="min-w-0 flex-1">
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-6 p-4 md:p-6 xl:px-10">
         {/* ------------------------------------------------------------ Header */}
@@ -718,79 +914,129 @@ export default function LevelsPage() {
           )}
         </header>
 
-        {/* ------------------------------------------------------------ Filters */}
-        <section className={`${panel} ${filtersOpen ? 'relative' : 'sticky top-3'} z-20 flex flex-col gap-4 p-4`}>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-1">
+        {/* ------------------------------------------------------------ Toolbar */}
+        <section className={`${panel} relative z-20 flex flex-col gap-3 p-3 sm:p-4`}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {/* search: full width on phones, grows on bigger screens */}
+            <div className="relative order-1 basis-full sm:basis-auto sm:min-w-[220px] sm:flex-1">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
               <input
                 ref={searchRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by name, creator or level ID"
+                placeholder="Search name, creator or ID"
                 aria-label="Search levels"
-                className="h-11 w-full rounded-xl border border-slate-800 bg-white/[0.03] pl-10 pr-16 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none focus:ring-2 focus:ring-cyan-400/20"
+                className="h-11 w-full rounded-xl border border-slate-800 bg-white/[0.03] pl-10 pr-12 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/50 focus:outline-none focus:ring-2 focus:ring-cyan-400/20"
               />
               {query ? (
-                <button onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-3 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-slate-500 hover:bg-white/10 hover:text-white">
-                  <X className="size-3.5" />
+                <button onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-slate-500 hover:bg-white/10 hover:text-white">
+                  <X className="size-4" />
                 </button>
               ) : (
-                <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-800/60 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">/</kbd>
+                <kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-700 bg-slate-800/60 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 sm:block">/</kbd>
               )}
             </div>
 
-            <button
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-              aria-label={filtersOpen ? 'Hide filters' : 'Show filters'}
-              title="Show / hide filters (F)"
-              className="relative flex h-11 items-center gap-2 rounded-xl border border-slate-800 bg-white/[0.03] px-3.5 text-sm font-semibold text-slate-300 transition hover:border-slate-700 hover:text-white"
-            >
-              <SlidersHorizontal className="size-4 text-cyan-300" />
-              <span className="hidden sm:inline">Filters</span>
-              <ChevronDown className={`size-4 text-slate-500 transition-transform duration-300 ${filtersOpen ? 'rotate-180' : ''}`} />
-              {!filtersOpen && activeFilters > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-gradient-to-r from-cyan-400 to-pink-500 text-[10px] font-extrabold text-white">{activeFilters}</span>
+            {/* difficulty: an icon button that opens a list (the faces show which is which) */}
+            <div ref={diffRef} className="relative order-2">
+              <button
+                onClick={() => {
+                  setDiffOpen((o) => !o)
+                  setSortOpen(false)
+                }}
+                aria-expanded={diffOpen}
+                aria-label="Filter by difficulty"
+                title="Difficulty"
+                className={`relative flex h-11 min-w-11 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${diffs.length ? 'border-cyan-400/40 bg-cyan-400/10 text-white' : 'border-slate-800 bg-white/[0.03] text-slate-300 hover:border-slate-700 hover:text-white'}`}
+              >
+                {diffs.length === 0 ? (
+                  <Swords className="size-4 text-cyan-300" />
+                ) : (
+                  <span className="flex -space-x-2">
+                    {diffs.slice(0, 3).map((d) => (
+                      <Face key={d} difficulty={d} tier="rated" className="size-6 object-contain" />
+                    ))}
+                  </span>
+                )}
+                {diffs.length > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-gradient-to-r from-cyan-400 to-violet-500 text-[10px] font-extrabold text-white">{diffs.length}</span>
+                )}
+              </button>
+
+              {diffOpen && (
+                <div className="absolute left-0 z-30 mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#0d141a] shadow-2xl">
+                  <div className="flex items-center justify-between px-4 pb-1 pt-3">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      <Swords className="size-3.5" /> Difficulty
+                    </span>
+                    {diffs.length > 0 && (
+                      <button onClick={() => setDiffs([])} className="text-xs font-bold text-cyan-300 hover:underline">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <ul className="p-1.5">
+                    {DIFFICULTIES.map((d) => {
+                      const on = diffs.includes(d)
+                      return (
+                        <li key={d}>
+                          <button
+                            onClick={() => setDiffs((x) => toggle(x, d))}
+                            aria-pressed={on}
+                            className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${on ? 'bg-white/[0.07]' : 'hover:bg-white/5'}`}
+                          >
+                            <Face difficulty={d} tier="rated" className="size-9 shrink-0 object-contain" />
+                            <span className="flex-1 text-sm font-bold text-slate-100">{d}</span>
+                            <span className="text-xs font-semibold tabular-nums text-slate-500">{counts.d[d]}</span>
+                            <span className={`grid size-5 place-items-center rounded-md border transition ${on ? 'border-transparent' : 'border-slate-700'}`} style={on ? { background: DIFF_COLOR[d] } : undefined}>
+                              {on && <Check className="size-3.5 text-[#070b0e]" />}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
               )}
-            </button>
+            </div>
 
             {/* sort */}
-            <div className="relative">
+            <div ref={sortRef} className="relative order-3 min-w-0 flex-1 sm:flex-none">
               <button
-                onClick={() => setSortOpen((o) => !o)}
+                onClick={() => {
+                  setSortOpen((o) => !o)
+                  setDiffOpen(false)
+                }}
                 aria-expanded={sortOpen}
-                className="flex h-11 items-center gap-2 rounded-xl border border-slate-800 bg-white/[0.03] px-3.5 text-sm font-semibold text-slate-300 transition hover:border-slate-700 hover:text-white"
+                className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-slate-800 bg-white/[0.03] px-3.5 text-sm font-semibold text-slate-300 transition hover:border-slate-700 hover:text-white"
               >
-                <ArrowUpDown className="size-4 text-cyan-300" />
-                {sortLabel}
-                <ChevronDown className={`size-4 text-slate-500 transition ${sortOpen ? 'rotate-180' : ''}`} />
+                <span className="flex min-w-0 items-center gap-2">
+                  <ArrowUpDown className="size-4 shrink-0 text-cyan-300" />
+                  <span className="truncate">{sortLabel}</span>
+                </span>
+                <ChevronDown className={`size-4 shrink-0 text-slate-500 transition ${sortOpen ? 'rotate-180' : ''}`} />
               </button>
               {sortOpen && (
-                <>
-                  <button className="fixed inset-0 z-10 cursor-default" aria-label="Close" onClick={() => setSortOpen(false)} />
-                  <div className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#0d141a] p-1 shadow-2xl">
-                    {SORTS.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setSort(s.id)
-                          setSortOpen(false)
-                        }}
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${sort === s.id ? 'bg-cyan-400/15 text-cyan-200' : 'text-slate-300 hover:bg-white/5'
-                          }`}
-                      >
-                        {s.label}
-                        {sort === s.id && <Check className="size-4" />}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <div className="absolute right-0 z-30 mt-2 w-56 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/10 bg-[#0d141a] p-1 shadow-2xl sm:left-auto">
+                  {SORTS.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setSort(s.id)
+                        setSortOpen(false)
+                      }}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition ${sort === s.id ? 'bg-cyan-400/15 text-cyan-200' : 'text-slate-300 hover:bg-white/5'}`}
+                    >
+                      {s.label}
+                      {sort === s.id && <Check className="size-4" />}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
             {/* view toggle */}
-            <div className="flex rounded-xl border border-slate-800 bg-white/[0.03] p-1">
+            <div className="order-4 flex rounded-xl border border-slate-800 bg-white/[0.03] p-1">
               {([['grid', LayoutGrid], ['list', List]] as const).map(([id, Icon]) => (
                 <button
                   key={id}
@@ -805,51 +1051,23 @@ export default function LevelsPage() {
             </div>
           </div>
 
-          <div className={`grid transition-[grid-template-rows,opacity] duration-300 ${filtersOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-            <div className="overflow-hidden" inert={!filtersOpen}>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex w-24 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    <Swords className="size-3.5" /> Difficulty
-                  </span>
-                  {DIFFICULTIES.map((d) => (
-                    <Chip key={d} active={diffs.includes(d)} onClick={() => setDiffs((x) => toggle(x, d))} count={counts.d[d]} tone={`${DIFF_STYLE[d].chip}`}>
-                      {d}
-                    </Chip>
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex w-24 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    <Star className="size-3.5" /> Rating
-                  </span>
-                  {TIERS.map((t) => (
-                    <Chip key={t} active={tiers.includes(t)} onClick={() => setTiers((x) => toggle(x, t))} count={counts.t[t]} tone={TIER_STYLE[t].chip}>
-                      {TIER_STYLE[t].label}
-                    </Chip>
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex w-24 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    <SlidersHorizontal className="size-3.5" /> Status
-                  </span>
-                  {STATUSES.map((s) => (
-                    <Chip key={s.id} active={status === s.id} onClick={() => setStatus(s.id)}>
-                      {s.label}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-            </div>
+          {/* status: one row, scrolls sideways on small screens */}
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+            {STATUSES.map((s) => (
+              <Chip key={s.id} active={status === s.id} onClick={() => setStatus(s.id)}>
+                {s.label}
+              </Chip>
+            ))}
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-800 pt-3 text-sm">
+          <div className="flex items-center justify-between gap-3 border-t border-slate-800 pt-3 text-sm">
             <span className="text-slate-400">
-              Showing <span className="font-bold tabular-nums text-white">{filtered.length}</span> of {levels.length} levels
+              <span className="font-bold tabular-nums text-white">{filtered.length}</span> of {levels.length} levels
             </span>
             {activeFilters > 0 && (
-              <button onClick={reset} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/10">
+              <button onClick={reset} className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/10">
                 <RotateCcw className="size-3.5" />
-                Reset {activeFilters} {activeFilters === 1 ? 'filter' : 'filters'}
+                Reset {activeFilters}
               </button>
             )}
           </div>
@@ -874,15 +1092,15 @@ export default function LevelsPage() {
             </button>
           </div>
         ) : view === 'grid' ? (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
             {shown.map((l, i) => (
-              <LevelCard key={l.id} level={l} now={now} index={i} />
+              <LevelCard key={l.id} level={l} now={now} index={i} rank={i + 1} />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">
             {shown.map((l, i) => (
-              <LevelRow key={l.id} level={l} now={now} index={i} />
+              <LevelRow key={l.id} level={l} now={now} index={i} rank={i + 1} />
             ))}
           </div>
         )}
