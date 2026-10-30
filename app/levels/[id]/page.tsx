@@ -40,7 +40,7 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
   const imageUrl = `https://levelthumbs.prevter.me/thumbnail/${backendLevel.id}`;
 
   // 👇 1. Extract the colors on the server before rendering
-  const { primary, secondary } = await extractColorsFromImage(imageUrl);
+  // const { primary, secondary } = await extractColorsFromImage(imageUrl);
 
   const level: Level = {
     ...backendLevel,
@@ -51,12 +51,12 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
   return (
     <>
       {/* 👇 2. Inject the extracted colors into the HTML payload */}
-      <style>{`
+      {/* <style>{`
         :root {
           --scroll-primary: ${primary};
           --scroll-secondary: ${secondary};
         }
-      `}</style>
+      `}</style> */}
       <LevelInfo level={level} />
     </>
   )
