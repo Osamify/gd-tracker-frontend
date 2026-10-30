@@ -39,8 +39,18 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
 
   const imageUrl = `https://levelthumbs.prevter.me/thumbnail/${backendLevel.id}`;
 
-  // 👇 1. Extract the colors on the server before rendering
-  // const { primary, secondary } = await extractColorsFromImage(imageUrl);
+  // 👇 SAFE COLOR EXTRACTION
+  let primary = '#8b5cf6'; // Default Purple
+  let secondary = '#d946ef'; // Default Pink
+
+  try {
+    const colors = await extractColorsFromImage(imageUrl);
+    primary = colors.primary;
+    secondary = colors.secondary;
+  } catch (error) {
+    console.error("Color extraction failed, using fallback colors:", error);
+    // It will just use the default purple/pink variables from above
+  }
 
   const level: Level = {
     ...backendLevel,
@@ -50,13 +60,12 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <>
-      {/* 👇 2. Inject the extracted colors into the HTML payload */}
-      {/* <style>{`
+      <style>{`
         :root {
           --scroll-primary: ${primary};
           --scroll-secondary: ${secondary};
         }
-      `}</style> */}
+      `}</style>
       <LevelInfo level={level} />
     </>
   )
