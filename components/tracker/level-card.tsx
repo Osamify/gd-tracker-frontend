@@ -1,6 +1,6 @@
 import { AlertTriangle, Crosshair, Route, Swords } from 'lucide-react'
 import { Badge } from '../../components/ui/badge'
-import { Progress } from '../../components/ui/progress'
+import { GlowProgress } from '../../components/ui/progress'
 import { bestRun, minimumRunsToComplete, type Level } from '../../lib/tracker'
 
 /* -------------------------------------------------------------------------- */
@@ -119,7 +119,7 @@ export function LevelCard({ level, onClick }: { level: Level; onClick?: () => vo
         </div>
 
         {/* Progress */}
-        <Progress
+        <GlowProgress
           value={best}
           aria-label={`${level.name} best run ${best}%`}
           className="[&_[data-slot=progress-indicator]]:bg-gradient-to-r [&_[data-slot=progress-indicator]]:from-cyan-400 [&_[data-slot=progress-indicator]]:via-violet-500 [&_[data-slot=progress-indicator]]:to-pink-500 [&_[data-slot=progress-indicator]]:shadow-[0_0_12px_rgba(139,92,246,0.7)] [&_[data-slot=progress-track]]:h-2 [&_[data-slot=progress-track]]:bg-slate-800"
@@ -146,10 +146,10 @@ export function LevelCard({ level, onClick }: { level: Level; onClick?: () => vo
           <div className="flex flex-wrap gap-1.5">
             {plan.chain.map((r) => (
               <span
-                key={`${r.start}-${r.end}`}
+                key={`${r.startPercent}-${r.endPercent}`}
                 className="rounded-md border border-slate-800 bg-white/[0.03] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-400"
               >
-                {r.start}–{r.end}%
+                {r.startPercent}–{r.endPercent}%
               </span>
             ))}
           </div>
