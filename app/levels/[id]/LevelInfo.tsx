@@ -233,8 +233,6 @@ const deaths = useMemo(() => {
   const aredl = level.currentAredlRank;
   const nlwRaw = level.nlwTier;
   const nlw = nlwRaw != null ? String(nlwRaw) : null
-  const originalId = level.originalLevelId;
-  const isRated = level.isRated;
 
   const lastRef = beaten ? level.dateCompleted ?? level.lastPlayedAt : level.lastPlayedAt
   const totalAttemptsNow = toNum(level.totalAttempts) ?? level.attempts
