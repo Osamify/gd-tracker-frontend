@@ -39,6 +39,19 @@ export type Level = {
   originalLevelId?: number | null
 }
 
+export type DeathStat = {
+  id: number
+  levelId: number
+  percentage: number
+  deathCount: number
+  lastDiedAt: string
+}
+
+export type CombinedAttempts = {
+  combinedAttempts: number
+}
+
+
 export type ActivityEntry =
   | { id: string; type: 'run'; levelId: string; startPercent: number; endPercent: number; at: string }
   | { id: string; type: 'death'; levelId: string; percent: number; at: string }

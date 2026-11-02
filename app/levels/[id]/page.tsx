@@ -1,14 +1,12 @@
 // app/levels/[id]/page.tsx
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import LevelInfo from './LevelInfo' // Make sure this path is correct based on where you put LevelInfo
-import type { Level } from '@/lib/tracker'
+import LevelInfo from './LevelInfo'
+import type { Level, CombinedAttempts, DeathStat } from '@/lib/tracker'
 import Loader from '@/components/ui/loading'
-import { extractColorsFromImage } from '@/lib/server-colors' // 👈 Import the server extractor
+import { extractColorsFromImage } from '@/lib/server-colors'
 
-interface CSharpCombinedAttempts {
-  combinedAttempts: number;
-}
+
 
 async function getLevelData(id: string) {
   const res = await fetch(`${process.env.BACKEND_API_URL}/api/Levels/${id}`, { cache: 'no-store' })
@@ -16,21 +14,29 @@ async function getLevelData(id: string) {
     if (res.status === 404) return null
     throw new Error('Failed to fetch level')
   }
-  return res.json() as Promise<Level> 
+  return res.json() as Promise<Level>
 }
 
 async function getCombinedAttempts(id: string) {
   const res = await fetch(`${process.env.BACKEND_API_URL}/api/Levels/${id}/combined-attempts`, { cache: 'no-store' })
-  if (!res.ok) return { combinedAttempts: 0 } 
-  return res.json() as Promise<CSharpCombinedAttempts>
+  if (!res.ok) return { combinedAttempts: 0 }
+  return res.json() as Promise<CombinedAttempts>
 }
+
+async function getDeathStats(id: string) {
+  const res = await fetch(`${process.env.BACKEND_API_URL}/api/Runs/stats/${id}`, { cache: 'no-store' })
+  if (!res.ok) return []
+  return res.json() as Promise<DeathStat[]>
+}
+
 
 async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [backendLevel, attemptsData] = await Promise.all([
+  const [backendLevel, attemptsData, deathStats] = await Promise.all([
     getLevelData(id),
-    getCombinedAttempts(id)
+    getCombinedAttempts(id),
+    getDeathStats(id)
   ])
 
   if (!backendLevel) {
@@ -55,7 +61,7 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
   const level: Level = {
     ...backendLevel,
     attempts: attemptsData.combinedAttempts || backendLevel.totalAttempts || 0,
-    image: imageUrl, 
+    image: imageUrl,
   }
 
   return (
@@ -66,23 +72,23 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
           --scroll-secondary: ${secondary};
         }
       `}</style>
-      <LevelInfo level={level} />
+      <LevelInfo level={level} deathStats={deathStats} />
     </>
   )
 }
 
 export default function LevelPage({ params }: { params: Promise<{ id: string }> }) {
   return (
-    <Suspense 
+    <Suspense
       fallback={
-        <Loader 
-          title="Loading level" 
+        <Loader
+          title="Loading level"
           messages={[
             "Fetching data from backend",
             "Syncing practice runs",
             "Calculating coverage",
             "Crunching the numbers"
-          ]} 
+          ]}
         />
       }
     >

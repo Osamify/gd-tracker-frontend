@@ -10,7 +10,7 @@
 // =====================================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { minimumRunsToComplete, type Level, type Run } from '@/lib/tracker'
+import { minimumRunsToComplete, type Level, type Run, DeathStat } from '@/lib/tracker'
 
 // Sub-components
 import PlanData from '@/components/level/plan-data'
@@ -73,6 +73,23 @@ function groupDeaths(deaths: number[]) {
   return [...map.entries()].map(([percent, count]) => ({ percent, count }))
 }
 
+// Deaths grouped by percent, with the time of the LAST death at that percent (from the backend's DeathStat rows).
+type DeathGroup = { percent: number; count: number; lastDiedAt: string | null }
+
+function groupDeathStats(stats: DeathStat[]): DeathGroup[] {
+  const map = new Map<number, DeathGroup>()
+  for (const s of stats) {
+    const g = map.get(s.percentage)
+    if (g) {
+      g.count += s.deathCount
+      if (s.lastDiedAt && (!g.lastDiedAt || s.lastDiedAt > g.lastDiedAt)) g.lastDiedAt = s.lastDiedAt
+    } else {
+      map.set(s.percentage, { percent: s.percentage, count: s.deathCount, lastDiedAt: s.lastDiedAt ?? null })
+    }
+  }
+  return [...map.values()]
+}
+
 function coverage(runs: Run[]) {
   const sorted = [...runs].sort((a, b) => a.startPercent - b.startPercent)
   const merged: Run[] = []
@@ -115,23 +132,22 @@ const LIVE_CSS = `
 }
 `
 
-export default function LevelInfo({ level }: { level: LevelDetail }) {
+export default function LevelInfo({ level, deathStats }: { level: LevelDetail, deathStats: DeathStat[] }) {
   /* -------------------------------------------------------------------------- */
   /*  0. Dynamic Scrollbar Colors (New)                                         */
   /* -------------------------------------------------------------------------- */
-  
 
   /* -------------------------------------------------------------------------- */
   /*  1. Core Level Data                                                        */
   /* -------------------------------------------------------------------------- */
-  
-  const best = level.progress; 
+
+  const best = level.progress;
   const plan = minimumRunsToComplete(level.runs)
 
   const rawDifficulty = String(level.demonDifficulty ?? '');
   const difficultyLabel = rawDifficulty ? (/demon$/i.test(rawDifficulty) ? rawDifficulty : `${rawDifficulty} Demon`) : 'Demon'
   const faceDiff = faceDifficulty(rawDifficulty)
-  
+
   const ratingLower = String(level.rating ?? '').toLowerCase();
   const tier: Tier = ['featured', 'epic', 'legendary', 'mythic'].includes(ratingLower)
     ? (ratingLower as Tier)
@@ -149,12 +165,26 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
   /*  2. Derived Data (UseMemo)                                                 */
   /* -------------------------------------------------------------------------- */
 
-  const deaths = useMemo(
-    () => (level.deaths?.length ? level.deaths : level.runs.filter((r) => r.startPercent === 0 && r.endPercent < 100).map((r) => r.endPercent)),
-    [level.deaths, level.runs],
+const deaths = useMemo(() => {
+  // 1. Check if we have the new DeathStats
+  if (deathStats && deathStats.length > 0) {
+    const expanded: number[] = [];
+    deathStats.forEach(stat => {
+      for (let i = 0; i < stat.deathCount; i++) {
+        expanded.push(stat.percentage);
+      }
+    });
+    return expanded;
+  }
+  
+  // 2. Fallback to old logic
+  return level.deaths?.length ? level.deaths : level.runs.filter((r) => r.startPercent === 0 && r.endPercent < 100).map((r) => r.endPercent);
+}, [deathStats, level.deaths, level.runs]);
+  // with backend DeathStats we keep the time of the last death for each percent; the old fallback has no times
+  const grouped: DeathGroup[] = useMemo(
+    () => (deathStats?.length ? groupDeathStats(deathStats) : groupDeaths(deaths).map((g) => ({ ...g, lastDiedAt: null }))),
+    [deathStats, deaths],
   )
-
-  const grouped = useMemo(() => groupDeaths(deaths), [deaths])
 
   const bestRuns = useMemo(
     () => groupRuns(level.runs.filter((r) => r.startPercent > 0))
@@ -195,7 +225,7 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
   /* -------------------------------------------------------------------------- */
   /*  3. Extra Level Data                                                       */
   /* -------------------------------------------------------------------------- */
-  
+
   const enjoyment = level.enjoyment;
   const ratingCount = level.ratingCount;
   const showcaseId = level.showcaseVideoId;
@@ -205,7 +235,7 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
   const nlw = nlwRaw != null ? String(nlwRaw) : null
   const originalId = level.originalLevelId;
   const isRated = level.isRated;
-  
+
   const lastRef = beaten ? level.dateCompleted ?? level.lastPlayedAt : level.lastPlayedAt
   const totalAttemptsNow = toNum(level.totalAttempts) ?? level.attempts
 
@@ -239,9 +269,9 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
     }
     return d
   }, [level.runs])
-  
+
   const densityMax = Math.max(1, ...density)
-  
+
   const weakest = useMemo(() => {
     const min = Math.min(...density)
     if (min >= Math.max(...density)) return null
@@ -262,11 +292,11 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
   /*  6. Live Refresh & New Run Detection                                       */
   /* -------------------------------------------------------------------------- */
 
-  const [now, setNow] = useState<number | null>(null) 
-  
+  const [now, setNow] = useState<number | null>(null)
+
   const [toast, setToast] = useState<{ id: number; tone: 'run' | 'best'; title: string; body: string } | null>(null)
   const [freshKey, setFreshKey] = useState<string | null>(null)
-  
+
   const prevRuns = useRef(level.runs.length)
   const prevBest = useRef(best)
 
@@ -305,11 +335,11 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
   return (
     <div className="relative isolate min-h-screen bg-[#070b0e] text-slate-200">
       <style>{LIVE_CSS}</style>
-      
+
       <LevelBackground thumb={thumb} />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1800px] flex-col gap-5 p-4 md:p-6 xl:px-10">
-        
+
         <LevelHero
           name={level.name}
           creator={level.creator}
@@ -340,7 +370,7 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
         />
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-          
+
           <div className="flex flex-col gap-5">
             <ProgressCard
               best={best}
@@ -368,7 +398,7 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
 
               <AllRunsColumn
                 deathsCount={deaths.length}
-                isDeathsLogged={Boolean(level.deaths?.length)}
+                isDeathsLogged={Boolean(level.deaths?.length || deathStats?.length)}
                 groupedDeaths={grouped}
                 practiceRunCount={practiceRunCount}
                 allRuns={allRuns}
@@ -414,7 +444,7 @@ export default function LevelInfo({ level }: { level: LevelDetail }) {
               deathsCount={deaths.length}
             />
           </aside>
-          
+
         </div>
       </div>
 
