@@ -81,8 +81,7 @@ export function Loader({ messages = 'Loading...', title, interval = 1800, fullSc
     <div
       role="status"
       aria-live="polite"
-      className={`relative isolate grid place-items-center overflow-hidden bg-[#070b0e] text-slate-200 ${fullScreen ? 'min-h-screen' : 'min-h-[60vh] rounded-2xl'} ${className}`}
-    >
+className={`relative isolate grid w-full place-items-center overflow-hidden bg-[#070b0e] text-slate-200 ${fullScreen ? 'min-h-screen' : 'min-h-[60vh] rounded-2xl'} ${className}`}      >
       <style>{BASE_CSS + (rotate ? rotationCss(n) : '')}</style>
 
       {/* colour glows that slowly drift around */}

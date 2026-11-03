@@ -1,10 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUp,
   ArrowUpDown,
   Check,
   ChevronDown,
@@ -221,11 +222,13 @@ const fmtTier = (n: number) => n.toFixed(2)
  *  3. otherwise (or on a tie) the GDDP tier, higher = harder
  */
 function hardest(a: LevelItem, b: LevelItem) {
-  const aTier = a.gddpTier ?? -1
-  const bTier = b.gddpTier ?? -1
-  
-  // Sort descending (highest GDDP first)
-  return bTier - aTier || a.name.localeCompare(b.name)
+  const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
+  if (d) return d
+  if (a.demonDifficulty === 'Extreme') {
+    const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
+    if (r) return r
+  }
+  return (b.gddpTier ?? 0) - (a.gddpTier ?? 0) || a.name.localeCompare(b.name)
 }
 
 function formatDuration(s: number) {
@@ -304,10 +307,13 @@ const CSS = `
 @keyframes gl-grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
 @keyframes gl-float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
 @keyframes gl-sheen { from { transform: translateX(-160%) skewX(-18deg) } to { transform: translateX(380%) skewX(-18deg) } }
+@keyframes gl-fill-wave { to { background-position: -150% 0 } }
 @keyframes gl-shimmer { from { background-position: 0% 50% } to { background-position: 100% 50% } }
 .gl-rise { animation: gl-rise .55s cubic-bezier(.2, .8, .2, 1) both }
 .gl-grow { transform-origin: left; animation: gl-grow .9s cubic-bezier(.2, .8, .2, 1) both }
 .gl-float { animation: gl-float 5s ease-in-out infinite }
+.gl-fill { background-color: rgba(255,255,255,.075); background-image: linear-gradient(100deg, transparent 20%, rgba(103,232,249,.22) 40%, rgba(196,181,253,.42) 50%, rgba(103,232,249,.22) 60%, transparent 80%); background-size: 250% 100%; background-repeat: no-repeat; background-position: 150% 0; animation: gl-fill-wave 1.7s ease-in-out infinite; animation-delay: var(--d, 0s) }
+.gl-wave { position: relative; overflow: hidden }
 .gl-sheen { animation: gl-sheen 3.2s ease-in-out infinite }
 .gl-shimmer { background-size: 200% 100%; animation: gl-shimmer 5s ease-in-out infinite alternate }
 html { scrollbar-width: thin; scrollbar-color: #7c5cff #070b0e }
@@ -787,7 +793,106 @@ function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number |
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const PAGE_SIZE = 12
+/** Big completion ring for the hero: how many of your levels are beaten. */
+function CompletionRing({ beaten, total }: { beaten: number; total: number }) {
+  const id = useId()
+  const pct = total ? (beaten / total) * 100 : 0
+  const v = useCountUp(pct)
+  const r = 56
+  const c = 2 * Math.PI * r
+  return (
+    <div className="relative size-40 shrink-0">
+      <div className="absolute inset-4 rounded-full bg-violet-500/25 blur-2xl" aria-hidden="true" />
+      <svg viewBox="0 0 140 140" className="relative size-full -rotate-90" aria-hidden="true">
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#22d3ee" />
+            <stop offset="55%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#ec4899" />
+          </linearGradient>
+        </defs>
+        <circle cx="70" cy="70" r="66" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="2" strokeDasharray="1 6.2" />
+        <circle cx="70" cy="70" r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="12" />
+        <circle
+          cx="70"
+          cy="70"
+          r={r}
+          fill="none"
+          stroke={`url(#${id})`}
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeDasharray={`${(c * Math.min(100, v)) / 100} ${c}`}
+          style={{ filter: 'drop-shadow(0 0 8px rgba(139,92,246,.7))' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+        <span className="font-heading text-4xl font-extrabold tabular-nums text-white">
+          <Num value={beaten} />
+        </span>
+        <span className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">of {total} beaten</span>
+        <span className="mt-2 rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] font-extrabold tabular-nums text-cyan-200">{Math.round(pct)}%</span>
+      </div>
+    </div>
+  )
+}
+
+/** Placeholders with the same shape as the real card and row, shown until the levels arrive. */
+function SkeletonCard({ index }: { index: number }) {
+  return (
+    <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 8) * 60}ms`, '--d': `${(index % 3) * 0.22}s` } as CSSProperties}>
+      <div className="gl-wave relative aspect-[16/10] min-h-[220px] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#0a1015]/80">
+        <div className="gl-fill absolute inset-0" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#070b0e] via-[#070b0e]/30 to-transparent" />
+        <div className="absolute right-4 top-1/2 size-24 -translate-y-[55%] rounded-full bg-white/[0.05] blur-[1px] sm:size-28" />
+        <div className="relative flex h-full flex-col justify-between p-4 pb-5">
+          <div className="flex items-center gap-2">
+            <span className="gl-fill h-6 w-8 rounded-md" />
+            <span className="gl-fill h-6 w-24 rounded-md" />
+          </div>
+          <div className="space-y-2">
+            <span className="gl-fill block h-6 w-3/5 rounded-md" />
+            <span className="gl-fill block h-3.5 w-2/5 rounded-md" />
+          </div>
+          <div className="space-y-2">
+            <span className="gl-fill block h-10 w-24 rounded-lg" />
+            <span className="gl-fill block h-3 w-40 rounded-md" />
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50" />
+      </div>
+    </div>
+  )
+}
+
+function SkeletonRow({ index }: { index: number }) {
+  return (
+    <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 8) * 50}ms`, '--d': `${index * 0.12}s` } as CSSProperties}>
+      <div className="gl-wave flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0a1015]/80 py-3 pl-5 pr-4 md:flex-row md:items-center md:gap-4">
+        <div className="flex min-w-0 items-center gap-3 md:contents">
+          <span className="gl-fill size-11 shrink-0 rounded-xl" />
+          <span className="gl-fill hidden h-16 w-32 shrink-0 rounded-xl sm:block" />
+          <span className="gl-fill size-14 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <span className="gl-fill block h-5 w-2/5 rounded-md" />
+            <span className="gl-fill block h-3.5 w-1/4 rounded-md" />
+            <span className="gl-fill block h-4 w-20 rounded-md" />
+          </div>
+          <span className="gl-fill h-9 w-16 shrink-0 rounded-lg md:hidden" />
+        </div>
+        <span className="gl-fill h-2 rounded-full md:hidden" />
+        <span className="gl-fill hidden h-2 w-52 shrink-0 rounded-full md:block" />
+        <div className="hidden w-24 shrink-0 flex-col gap-2 xl:flex">
+          <span className="gl-fill block h-3.5 w-16 rounded-md" />
+          <span className="gl-fill block h-3.5 w-12 rounded-md" />
+        </div>
+        <span className="gl-fill hidden h-9 w-[4.5rem] shrink-0 rounded-lg md:block" />
+      </div>
+    </div>
+  )
+}
+
+const FIRST_PAGE = 15 // cards shown at first
+const PAGE_SIZE = 12 // cards added by each "Show more"
 
 export default function LevelsPage() {
   const { levels, loading, error, retry } = useLevels()
@@ -797,11 +902,13 @@ export default function LevelsPage() {
   const [status, setStatus] = useState<StatusId>('beaten')
   const [sort, setSort] = useState<SortId>('difficulty')
   const [view, setView] = useState<'grid' | 'list'>('grid')
-  const [visible, setVisible] = useState(PAGE_SIZE)
+  const [visible, setVisible] = useState(FIRST_PAGE)
   const [sortOpen, setSortOpen] = useState(false)
   const [diffOpen, setDiffOpen] = useState(false)
   const [now, setNow] = useState<number | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const toolbarRef = useRef<HTMLElement>(null)
+  const [showJump, setShowJump] = useState(false)
   // While you search, the status filter steps aside (search looks in ALL levels). Clearing the search brings it back.
   const queryRef = useRef('')
   const statusRef = useRef<StatusId>('beaten')
@@ -882,7 +989,15 @@ export default function LevelsPage() {
     }
   }, [])
 
-  useEffect(() => setVisible(PAGE_SIZE), [query, diffs, status, sort])
+  useEffect(() => setVisible(FIRST_PAGE), [query, diffs, status, sort])
+
+  // the jump buttons appear once you have scrolled down a bit
+  useEffect(() => {
+    const onScroll = () => setShowJump(window.scrollY > 700)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
 
@@ -938,6 +1053,16 @@ export default function LevelsPage() {
     [levels],
   )
 
+  // beaten / total for each difficulty, hardest first
+  const ladder = useMemo(
+    () =>
+      [...DIFFICULTIES].reverse().map((d) => {
+        const all = levels.filter((l) => l.demonDifficulty === d)
+        return { d, total: all.length, beaten: all.filter(isBeaten).length }
+      }),
+    [levels],
+  )
+
   const activeFilters = diffs.length + (status !== 'all' ? 1 : 0) + (query.trim() ? 1 : 0)
   const reset = () => {
     queryRef.current = ''
@@ -954,6 +1079,15 @@ export default function LevelsPage() {
     <div className="relative isolate flex min-h-screen bg-[#070b0e] text-slate-200">
       <style>{CSS}</style>
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+        <div
+          className="absolute inset-0 opacity-40"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(148,163,184,.22) 1px, transparent 1px)',
+            backgroundSize: '26px 26px',
+            maskImage: 'radial-gradient(ellipse 85% 55% at 50% 0%, #000 20%, transparent 78%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 85% 55% at 50% 0%, #000 20%, transparent 78%)',
+          }}
+        />
         <div className="absolute -left-32 -top-32 size-[34rem] rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="absolute -right-32 top-1/3 size-[34rem] rounded-full bg-violet-600/10 blur-3xl" />
         <div className="absolute -bottom-40 left-1/3 size-[34rem] rounded-full bg-pink-500/10 blur-3xl" />
@@ -961,9 +1095,19 @@ export default function LevelsPage() {
 
       <div className="min-w-0 flex-1">
         <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-6 p-4 md:p-6 xl:px-10">
-          <header className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-end justify-between gap-3">
+          <header className="gl-rise relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#0e1620]/90 via-[#0a1015]/80 to-[#0a1015]/70 p-5 backdrop-blur-xl sm:p-6">
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/70 to-transparent" aria-hidden="true" />
+            <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-violet-600/15 blur-3xl" aria-hidden="true" />
+            <div className="pointer-events-none absolute -bottom-32 -left-20 size-80 rounded-full bg-cyan-500/10 blur-3xl" aria-hidden="true" />
+
+            <div className="relative flex flex-wrap items-start justify-between gap-3">
               <div>
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.3em] text-cyan-300/80">
+                  <span className="h-px w-8 bg-gradient-to-r from-cyan-300 to-transparent" />
+                  Demontrack
+                  <span className="text-slate-600">/</span>
+                  Practice log
+                </div>
                 <h1 className="gl-shimmer bg-gradient-to-r from-cyan-300 via-violet-300 to-pink-300 bg-clip-text font-heading text-4xl font-extrabold tracking-tight text-transparent xl:text-5xl">
                   Demon Levels
                 </h1>
@@ -978,50 +1122,112 @@ export default function LevelsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-              {[
-                { label: 'Levels', value: <Num value={stats.total} />, icon: <Layers className="size-5" />, tone: 'bg-cyan-400/10 text-cyan-300' },
-                { label: 'Beaten', value: <Num value={stats.beaten} />, icon: <Trophy className="size-5" />, tone: 'bg-emerald-400/10 text-emerald-300' },
-                { label: 'In progress', value: <Num value={stats.inProgress} />, icon: <Flame className="size-5" />, tone: 'bg-orange-400/10 text-orange-300' },
-                { label: 'Total attempts', value: <Num value={stats.attempts} />, icon: <Skull className="size-5" />, tone: 'bg-red-500/10 text-red-400' },
-                { label: 'Average best', value: <Num value={stats.avgBest} decimals={1} suffix="%" />, icon: <Gauge className="size-5" />, tone: 'bg-violet-400/10 text-violet-300' },
-              ].map((s, i) => (
-                <div key={s.label} className={`${panel} gl-rise flex items-center gap-3 p-4`} style={{ animationDelay: `${i * 60}ms` }}>
-                  <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${s.tone}`}>{s.icon}</span>
-                  <div className="leading-tight">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{s.label}</div>
-                    <div className="font-heading text-2xl font-extrabold tabular-nums text-white">{s.value}</div>
+            {/* ring + numbers + where you left off */}
+            <div className={`relative mt-6 grid items-center gap-5 ${resume || loading ? 'lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,26rem)]' : 'lg:grid-cols-[auto_minmax(0,1fr)]'}`}>
+              <div className="grid place-items-center">
+                {loading ? <span className="gl-fill size-40 rounded-full" /> : <CompletionRing beaten={stats.beaten} total={stats.total} />}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'In progress', value: <Num value={stats.inProgress} />, icon: <Flame className="size-5" />, tone: 'bg-orange-400/10 text-orange-300' },
+                  { label: 'Not started', value: <Num value={counts.s.fresh} />, icon: <Play className="size-5" />, tone: 'bg-cyan-400/10 text-cyan-300' },
+                  { label: 'Total attempts', value: <Num value={stats.attempts} />, icon: <Skull className="size-5" />, tone: 'bg-red-500/10 text-red-400' },
+                  { label: 'Average best', value: <Num value={stats.avgBest} decimals={1} suffix="%" />, icon: <Gauge className="size-5" />, tone: 'bg-violet-400/10 text-violet-300' },
+                ].map((st, i) => (
+                  <div key={st.label} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-black/20 p-3.5" style={{ '--d': `${i * 0.18}s` } as CSSProperties}>
+                    <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${st.tone}`}>{st.icon}</span>
+                    <div className="min-w-0 leading-tight">
+                      <div className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-500">{st.label}</div>
+                      <div className="font-heading text-2xl font-extrabold tabular-nums text-white">{loading ? <span className="gl-fill mt-1 block h-6 w-14 rounded-md" /> : st.value}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
+              {loading ? (
+                <div className="gl-wave h-[132px] rounded-2xl border border-white/10 bg-black/20" />
+              ) : (
+                resume && (
+                  <Link
+                    href={`/levels/${resume.id}`}
+                    className="group relative flex h-full min-h-[132px] flex-col justify-between gap-3 overflow-hidden rounded-2xl border border-white/10 p-4 transition duration-300 hover:border-cyan-400/50"
+                  >
+                    <Thumb level={resume} className="pointer-events-none absolute inset-0 opacity-40" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-[#0a1015] via-[#0a1015]/80 to-[#0a1015]/30" />
+                    <div className="relative flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300">
+                        <Crosshair className="size-3.5" /> Continue
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-400" suppressHydrationWarning>
+                        {relativeTime(resume.lastPlayedAt, now) || ' '}
+                      </span>
+                    </div>
+                    <div className="relative flex items-center gap-3">
+                      <Face difficulty={resume.demonDifficulty} tier={toTier(resume.rating)} className={`gl-float size-14 shrink-0 object-contain ${TIER_STYLE[toTier(resume.rating)].glow}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-heading text-xl font-extrabold text-white">{resume.name}</div>
+                        <div className="truncate text-xs text-slate-400">
+                          Best <span className="font-bold text-white">{resume.progress}%</span> · {resume.totalAttempts.toLocaleString('en-US')} attempts
+                        </div>
+                      </div>
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 via-violet-500 to-pink-500 text-white shadow-[0_0_24px_-4px_rgba(139,92,246,0.7)] transition group-hover:scale-110">
+                        <ArrowRight className="size-5" />
+                      </span>
+                    </div>
+                  </Link>
+                )
+              )}
             </div>
 
-            {resume && (
-              <Link
-                href={`/levels/${resume.id}`}
-                className={`${panel} gl-rise group relative flex items-center gap-4 overflow-hidden p-4 transition hover:border-cyan-400/40`}
-                style={{ animationDelay: '250ms' }}
-              >
-                <Thumb level={resume} className="pointer-events-none absolute inset-0 opacity-25" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a1015] via-[#0a1015]/80 to-transparent" />
-                <Face difficulty={resume.demonDifficulty} tier={toTier(resume.rating)} className={`gl-float relative size-16 shrink-0 object-contain ${TIER_STYLE[toTier(resume.rating)].glow}`} />
-                <div className="relative min-w-0 flex-1">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">Continue where you left off</div>
-                  <div className="truncate font-heading text-xl font-extrabold text-white">{resume.name}</div>
-                  <div className="truncate text-xs text-slate-400">
-                    Best {resume.progress}% · {resume.totalAttempts.toLocaleString('en-US')} attempts ·{' '}
-                    <span suppressHydrationWarning>{relativeTime(resume.lastPlayedAt, now) || ' '}</span>
+            <div className="relative mt-5 border-t border-white/[0.07] pt-5">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
+                <Swords className="size-3.5 text-cyan-300" /> Demon ladder
+                <span className="font-semibold normal-case tracking-normal text-slate-600">· tap one to filter</span>
+              </div>
+{/* demon ladder: beaten / total for each difficulty. Click one to filter by it. */}
+  <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-5 sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
+    {loading
+      ? Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="gl-wave h-[84px] min-w-[150px] shrink-0 rounded-2xl border border-white/10 bg-[#0a1015]/70 p-3 sm:min-w-0" style={{ '--d': `${i * 0.18}s` } as CSSProperties}>
+            <span className="gl-fill block size-12 rounded-full" />
+          </div>
+        ))
+      : ladder.map(({ d, total, beaten }, i) => {
+          const on = diffs.includes(d)
+          const pct = total ? (beaten / total) * 100 : 0
+          const c = DIFF_COLOR[d]
+          return (
+            <button
+              key={d}
+              onClick={() => setDiffs((x) => toggle(x, d))}
+              aria-pressed={on}
+              title={on ? `Showing ${d} only. Click to remove.` : `Show only ${d}`}
+              className={`${panel} gl-rise group relative min-w-[150px] shrink-0 overflow-hidden p-3 text-left transition duration-300 hover:-translate-y-0.5 sm:min-w-0`}
+              style={{ animationDelay: `${i * 60}ms`, borderColor: on ? c : undefined, boxShadow: on ? `0 0 0 1px ${c}, 0 10px 30px -14px ${c}` : undefined }}
+            >
+              <span className="pointer-events-none absolute -right-6 -top-6 size-20 rounded-full opacity-25 blur-2xl transition duration-300 group-hover:opacity-50" style={{ background: c }} aria-hidden="true" />
+              <div className="relative flex items-center gap-3">
+                <Face difficulty={d} tier="rated" className="size-12 shrink-0 object-contain transition duration-300 group-hover:scale-110" />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{d}</div>
+                  <div className="font-heading text-xl font-extrabold tabular-nums text-white">
+                    {beaten}
+                    <span className="text-sm font-bold text-slate-500"> / {total}</span>
                   </div>
                 </div>
-                <span className="relative flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 via-violet-500 to-pink-500 px-4 py-2 text-sm font-bold text-white shadow-[0_0_24px_-4px_rgba(139,92,246,0.7)] transition group-hover:scale-105">
-                  <Crosshair className="size-4" />
-                  <span className="hidden sm:inline">Open</span>
-                </span>
-              </Link>
-            )}
+              </div>
+              <div className="relative mt-2.5 h-1 overflow-hidden rounded-full bg-white/[0.07]">
+                <div className="gl-grow h-full rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(to right, ${c}66, ${c})`, boxShadow: `0 0 10px ${c}`, animationDelay: `${i * 80}ms` }} />
+              </div>
+            </button>
+          )
+        })}
+  </div>
+            </div>
           </header>
 
-          <section className={`${panel} relative z-20 flex flex-col gap-3 p-3 sm:p-4`}>
+          <section ref={toolbarRef} aria-busy={loading} className={`${panel} relative z-20 flex scroll-mt-4 flex-col gap-3 p-3 transition-opacity duration-300 sm:p-4 ${loading ? 'pointer-events-none select-none opacity-50' : ''}`}>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="relative order-1 basis-full sm:basis-auto sm:min-w-[220px] sm:flex-1">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
@@ -1158,7 +1364,7 @@ export default function LevelsPage() {
                 <Chip key={s.id} active={status === s.id} onClick={() => {
                     savedStatus.current = null
                     setStatus(s.id)
-                  }} count={counts.s[s.id]}>
+                  }} count={loading ? undefined : counts.s[s.id]}>
                   {s.label}
                 </Chip>
               ))}
@@ -1166,7 +1372,13 @@ export default function LevelsPage() {
 
             <div className="flex items-center justify-between gap-3 border-t border-slate-800 pt-3 text-sm">
               <span className="text-slate-400">
-                <span className="font-bold tabular-nums text-white">{filtered.length}</span> of {levels.length} levels
+                {loading ? (
+                  <span className="gl-fill inline-block h-4 w-28 rounded-md align-middle" />
+                ) : (
+                  <>
+                    <span className="font-bold tabular-nums text-white">{filtered.length}</span> of {levels.length} levels
+                  </>
+                )}
               </span>
               {activeFilters > 0 && (
                 <button onClick={reset} className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/10">
@@ -1178,10 +1390,20 @@ export default function LevelsPage() {
           </section>
 
           {loading ? (
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-80 animate-pulse rounded-2xl bg-white/[0.04]" />
-              ))}
+            <div aria-busy="true" aria-label="Loading levels">
+              {view === 'grid' ? (
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonCard key={i} index={i} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <SkeletonRow key={i} index={i} />
+                  ))}
+                </div>
+              )}
             </div>
           ) : error && levels.length === 0 ? (
             <div className={`${panel} flex flex-col items-center gap-3 p-12 text-center`}>
@@ -1229,6 +1451,36 @@ export default function LevelsPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* jump buttons: show after you scroll down */}
+      <div
+        className={`fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 transition duration-300 sm:bottom-6 sm:right-6 ${showJump ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        aria-hidden={!showJump}
+      >
+        <button
+          type="button"
+          tabIndex={showJump ? 0 : -1}
+          onClick={() => {
+            toolbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            window.setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 450)
+          }}
+          className="flex h-11 items-center gap-2 rounded-full border border-white/15 bg-[#0d141a]/90 px-4 text-sm font-bold text-slate-200 shadow-xl backdrop-blur-xl transition hover:border-cyan-400/50 hover:text-cyan-200"
+        >
+          <SlidersHorizontal className="size-4 text-cyan-300" />
+          Filters
+        </button>
+        <button
+          type="button"
+          tabIndex={showJump ? 0 : -1}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Back to top"
+          title="Back to top"
+          className="grid size-12 place-items-center rounded-full bg-gradient-to-br from-cyan-400 via-violet-500 to-pink-500 text-white shadow-[0_8px_30px_-6px_rgba(139,92,246,0.8)] transition hover:scale-105"
+        >
+          <ArrowUp className="size-5" />
+        </button>
       </div>
     </div>
   )
