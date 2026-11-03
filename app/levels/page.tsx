@@ -222,8 +222,6 @@ const fmtTier = (n: number) => n.toFixed(2)
  *  3. otherwise (or on a tie) the GDDP tier, higher = harder
  */
 function hardest(a: LevelItem, b: LevelItem) {
-  const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
-  if (d) return d
   if (a.demonDifficulty === 'Extreme') {
     const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
     if (r) return r
