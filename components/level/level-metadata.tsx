@@ -109,7 +109,7 @@ function Showcase({ videoId, title }: { videoId: string; title: string }) {
 
       const key = e.key.toLowerCase();
 
-      if (key === 'f' && hasStarted) {
+      if (e.code === 'KeyF' && hasStarted) {
         e.preventDefault();
         setIsOpen((prev) => !prev);
       }
@@ -118,7 +118,7 @@ function Showcase({ videoId, title }: { videoId: string; title: string }) {
         setIsOpen(false);
       }
 
-      if (key === 'k') {
+      if (e.key === 'k') {
         e.preventDefault();
         if (!hasStarted) {
           setHasStarted(true);

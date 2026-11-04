@@ -18,7 +18,7 @@ export function RefreshButton() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // 1. Check if the pressed key is 'r' or 'R'
-      if (event.key.toLowerCase() !== 'r') return
+      if (event.code !== 'KeyR') return
 
       // 2. Ignore if the user is typing in an input, textarea, or contentEditable element
       const target = event.target as HTMLElement
