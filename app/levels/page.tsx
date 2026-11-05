@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
@@ -328,11 +328,15 @@ const CSS = `
 @keyframes gl-grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
 @keyframes gl-tick { from { transform: scaleY(.15) } }
 @keyframes gl-sheen { from { transform: translateX(-160%) skewX(-18deg) } to { transform: translateX(380%) skewX(-18deg) } }
+@keyframes gl-spin { to { transform: rotate(360deg) } }
 @keyframes gl-fill-wave { to { background-position: -150% 0 } }
 .gl-rise { animation: gl-rise .55s cubic-bezier(.2, .8, .2, 1) both }
 .gl-grow { transform-origin: left; animation: gl-grow .9s cubic-bezier(.2, .8, .2, 1) both }
 .gl-tick { transform-origin: bottom; animation: gl-tick .45s cubic-bezier(.2, .8, .2, 1) both }
 .gl-sheen { animation: gl-sheen 3.2s ease-in-out infinite }
+.gl-spin { animation: gl-spin 26s linear infinite }
+.gl-tilt { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .18s ease-out, box-shadow .3s }
+.gl-tilt:hover { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-6px) }
 .gl-lift { transition: transform .3s cubic-bezier(.2, .8, .2, 1), filter .3s }
 .gl-lift:hover { transform: translateY(-4px); filter: drop-shadow(0 16px 20px color-mix(in srgb, var(--ac, #d4ff3a) 32%, transparent)) }
 .gl-fill { background-color: rgba(255,255,255,.075); background-image: linear-gradient(100deg, transparent 20%, rgba(212,255,58,.16) 40%, rgba(212,255,58,.34) 50%, rgba(212,255,58,.16) 60%, transparent 80%); background-size: 250% 100%; background-repeat: no-repeat; background-position: 150% 0; animation: gl-fill-wave 1.7s ease-in-out infinite; animation-delay: var(--d, 0s) }
@@ -342,7 +346,7 @@ html::-webkit-scrollbar { width: 12px }
 html::-webkit-scrollbar-track { background: #08090b }
 html::-webkit-scrollbar-thumb { background: #d4ff3a; border: 3px solid #08090b }
 html::-webkit-scrollbar-thumb:hover { filter: brightness(1.15) }
-@media (prefers-reduced-motion: reduce) { .gl-rise, .gl-grow, .gl-tick, .gl-sheen { animation: none !important } .gl-lift { transition: none } }
+@media (prefers-reduced-motion: reduce) { .gl-rise, .gl-grow, .gl-tick, .gl-sheen, .gl-spin { animation: none !important } .gl-lift { transition: none } .gl-tilt, .gl-tilt:hover { transform: none } }
 `
 
 /* -------------------------------------------------------------------------- */
@@ -616,11 +620,33 @@ function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number 
   const beaten = st.kind === 'beaten'
   const played = relativeTime(level.lastPlayedAt, now)
 
+  // 3D tilt that follows the mouse (mouse only, not touch)
+  const ref = useRef<HTMLAnchorElement>(null)
+  const onMove = (e: ReactPointerEvent<HTMLAnchorElement>) => {
+    if (e.pointerType !== 'mouse') return
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const px = (e.clientX - r.left) / r.width
+    const py = (e.clientY - r.top) / r.height
+    el.style.setProperty('--rx', `${((0.5 - py) * 7).toFixed(2)}deg`)
+    el.style.setProperty('--ry', `${((px - 0.5) * 9).toFixed(2)}deg`)
+  }
+  const onLeave = () => {
+    const el = ref.current
+    if (!el) return
+    el.style.setProperty('--rx', '0deg')
+    el.style.setProperty('--ry', '0deg')
+  }
+
   return (
     <div className="gl-rise" style={{ animationDelay: `${delay}ms` }}>
       <Link
+        ref={ref}
+        onPointerMove={onMove}
+        onPointerLeave={onLeave}
         href={`/levels/${level.id}`}
-        className="group relative block aspect-[16/10] min-h-[220px] w-full rounded-2xl border border-white/10 bg-[#0a1015] transition duration-300 hover:-translate-y-1.5"
+        className="gl-tilt group relative block aspect-[16/10] min-h-[220px] w-full rounded-2xl border border-white/10 bg-[#0a1015]"
         style={beaten ? { borderColor: `${GREEN}66`, boxShadow: `0 0 40px -20px ${GREEN}` } : undefined}
       >
         <HoverGlow accent={GREEN} />
@@ -630,6 +656,7 @@ function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number 
           <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${accent}33, transparent 55%)` }} />
           <div className="absolute inset-0 bg-gradient-to-t from-[#070b0e] via-[#070b0e]/30 to-[#070b0e]/20" />
           <div className="absolute inset-0 bg-gradient-to-r from-[#070b0e]/70 via-[#070b0e]/10 to-transparent" />
+          {tier === 'mythic' && <div className="gl-sheen pointer-events-none absolute inset-y-0 left-0 w-1/3" style={{ background: 'linear-gradient(100deg, transparent, rgba(255,255,255,.26), transparent)' }} />}
           <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/50" title={`Best ${level.progress}%`}>
             <div
               className="gl-grow h-full rounded-r-full"
@@ -853,6 +880,107 @@ function SkeletonRow({ index }: { index: number }) {
 /* -------------------------------------------------------------------------- */
 
 const SAVE_KEY = 'gd-levels-state-v1' // sessionStorage: where you were in the list
+/** Round progress meter with a count-up number. */
+function ProgressRing({ value, size = 112 }: { value: number; size?: number }) {
+  const id = useId()
+  const v = useCountUp(Math.min(100, Math.max(0, value)))
+  const r = 44
+  const c = 2 * Math.PI * r
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <div className="absolute inset-3 rounded-full opacity-30 blur-xl" style={{ background: GREEN }} aria-hidden="true" />
+      <svg viewBox="0 0 100 100" className="relative size-full -rotate-90" aria-hidden="true">
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={GREEN} />
+            <stop offset="100%" stopColor={BRAND} />
+          </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="8" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke={`url(#${id})`} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(c * v) / 100} ${c}`} />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center font-heading text-2xl font-black tabular-nums text-white">
+        <span>
+          {Math.round(v)}
+          <span className="text-sm text-slate-400">%</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** The big banner at the top: your hardest unbeaten level, with a rotating target reticle around the face. */
+function TargetBanner({ level, now, onNavigate }: { level: LevelItem; now: number | null; onNavigate: () => void }) {
+  const tier = toTier(level.rating)
+  const accent = accentOf(level)
+  const mono = 'font-mono text-[10px] font-bold uppercase tracking-[0.22em]'
+  const chip = 'inline-flex items-center gap-1.5 border border-white/10 bg-black/40 px-2 py-1 font-mono text-[11px] font-bold tabular-nums text-slate-200'
+  return (
+    <Link href={`/levels/${level.id}`} onClickCapture={onNavigate} className="gl-lift group block" style={{ '--ac': BRAND } as CSSProperties}>
+      <Cut c={24} className="group-hover:[--bd:var(--ac)]" inner="overflow-hidden">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <Thumb level={level} className="h-full w-full" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0d1013] via-[#0d1013]/85 to-[#0d1013]/30" />
+          <div className="absolute inset-0" style={{ background: `radial-gradient(60% 130% at 10% 50%, ${accent}2e, transparent 60%)` }} />
+          <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'repeating-linear-gradient(135deg, #fff 0 1px, transparent 1px 8px)' }} />
+        </div>
+        <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: BRAND }} aria-hidden="true" />
+
+        <div className="relative grid items-center gap-5 p-5 pl-7 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-6 sm:p-6 sm:pl-9">
+          <div className="relative mx-auto grid size-32 place-items-center sm:mx-0 sm:size-40">
+            <svg viewBox="0 0 100 100" className="gl-spin absolute inset-0 size-full" aria-hidden="true">
+              <circle cx="50" cy="50" r="47" fill="none" stroke={BRAND} strokeOpacity=".55" strokeWidth=".8" strokeDasharray="2 4.2" />
+              <circle cx="50" cy="50" r="41" fill="none" stroke="#fff" strokeOpacity=".16" strokeWidth=".6" strokeDasharray="14 9" />
+            </svg>
+            <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" aria-hidden="true">
+              {[
+                [50, 0, 50, 9],
+                [50, 91, 50, 100],
+                [0, 50, 9, 50],
+                [91, 50, 100, 50],
+              ].map(([x1, y1, x2, y2], i) => (
+                <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={BRAND} strokeWidth="1.4" />
+              ))}
+            </svg>
+            <div className="relative size-24 transition duration-500 group-hover:scale-110 sm:size-28">
+              <Face difficulty={level.demonDifficulty} tier={tier} className={`size-full object-contain ${TIER_STYLE[tier].glow}`} />
+              <AredlBadge level={level} className="-left-3 bottom-2" />
+            </div>
+          </div>
+
+          <div className="min-w-0 text-center sm:text-left">
+            <div className={`${mono} flex items-center justify-center gap-2 sm:justify-start`} style={{ color: BRAND }}>
+              <Crosshair className="size-3.5" /> Target lock
+              <span className="text-slate-600">//</span>
+              <span className="text-slate-400">hardest unbeaten</span>
+            </div>
+            <h2 className="mt-2 truncate font-heading text-3xl font-black uppercase leading-none tracking-tight text-white sm:text-4xl xl:text-5xl">{level.name}</h2>
+            <p className="mt-1.5 font-mono text-xs text-slate-400">
+              by <span className="font-bold text-slate-200">{level.creator}</span>
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <StatusBadge st={statusOf(level, now)} />
+              <RatingChips level={level} />
+              <span className={chip}>{level.totalAttempts.toLocaleString('en-US')} attempts</span>
+              {level.totalSeconds != null && <span className={chip}>{formatDuration(level.totalSeconds)}</span>}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-4">
+            <ProgressRing value={level.progress} />
+            <span
+              className="grid size-12 shrink-0 place-items-center text-black transition duration-300 group-hover:translate-x-1"
+              style={{ background: BRAND, clipPath: 'polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px)' }}
+            >
+              <ArrowRight className="size-5" />
+            </span>
+          </div>
+        </div>
+      </Cut>
+    </Link>
+  )
+}
+
 type SavedState = { visible?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
 
 /**
@@ -893,9 +1021,16 @@ export default function LevelsPage() {
   const [view, setView] = useState<'grid' | 'list'>(() => readLocal('gd-levels-view', (v) => v === 'grid' || v === 'list', 'grid') as 'grid' | 'list')
   const [visible, setVisible] = useState(init && Number.isFinite(init.visible) ? Math.max(FIRST_PAGE, init.visible!) : FIRST_PAGE)
   const [sortOpen, setSortOpen] = useState(false)
+  const [miniSortOpen, setMiniSortOpen] = useState(false)
+  const miniSortRef = useRef<HTMLDivElement>(null)
+  const [miniDiffOpen, setMiniDiffOpen] = useState(false)
+  const miniDiffRef = useRef<HTMLDivElement>(null)
   const [diffOpen, setDiffOpen] = useState(false)
   const [now, setNow] = useState<number | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const miniRef = useRef<HTMLInputElement>(null)
+  const progRef = useRef<HTMLDivElement>(null)
+  const showJumpRef = useRef(false)
   const toolbarRef = useRef<HTMLElement>(null)
   const [showJump, setShowJump] = useState(false)
   // While you search, the status filter steps aside (search looks in ALL levels). Clearing the search brings it back.
@@ -947,7 +1082,8 @@ export default function LevelsPage() {
       const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
       if (e.key === '/' && !typing) {
         e.preventDefault()
-        searchRef.current?.focus()
+        // when the slim bar is showing (scrolled down), search there
+        ;(showJumpRef.current ? miniRef.current : searchRef.current)?.focus()
       }
       if (e.key === 'Escape' && el === searchRef.current) {
         updateQuery('')
@@ -963,11 +1099,15 @@ export default function LevelsPage() {
       const t = e.target as Node
       if (diffRef.current && !diffRef.current.contains(t)) setDiffOpen(false)
       if (sortRef.current && !sortRef.current.contains(t)) setSortOpen(false)
+      if (miniSortRef.current && !miniSortRef.current.contains(t)) setMiniSortOpen(false)
+      if (miniDiffRef.current && !miniDiffRef.current.contains(t)) setMiniDiffOpen(false)
     }
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setDiffOpen(false)
         setSortOpen(false)
+        setMiniSortOpen(false)
+        setMiniDiffOpen(false)
       }
     }
     document.addEventListener('mousedown', onDown)
@@ -1018,6 +1158,12 @@ export default function LevelsPage() {
     if (lastKey.current === filterKey) return
     lastKey.current = filterKey
     setVisible(FIRST_PAGE)
+    // changed from the slim bar while scrolled down: go back up to the first result (just under the slim bar)
+    const bar = toolbarRef.current
+    if (bar) {
+      const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
+      if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    }
   }, [filterKey])
 
   // 2) once the levels are on screen: hold the page at your old spot, and only SHOW it once it has stayed there for a few frames.
@@ -1080,7 +1226,11 @@ export default function LevelsPage() {
 
   // the jump buttons appear once you have scrolled down a bit
   useEffect(() => {
-    const onScroll = () => setShowJump(window.scrollY > 700)
+    const onScroll = () => {
+      setShowJump(window.scrollY > 700)
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      if (progRef.current) progRef.current.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`
+    }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -1164,6 +1314,7 @@ export default function LevelsPage() {
   const shown = filtered.slice(0, visible)
   const sortLabel = SORTS.find((s) => s.id === sort)?.label
 
+  showJumpRef.current = showJump
   const mono = 'font-mono text-[10px] font-bold uppercase tracking-[0.22em]'
   const remaining = Math.max(0, filtered.length - visible)
 
@@ -1184,6 +1335,176 @@ export default function LevelsPage() {
         />
         <div className="absolute -right-40 -top-48 size-[42rem] rounded-full blur-3xl" style={{ background: `${BRAND}12` }} />
         <div className="absolute -bottom-60 -left-40 size-[36rem] rounded-full bg-white/[0.03] blur-3xl" />
+      </div>
+
+      {/* reading progress hairline */}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5" aria-hidden="true">
+        <div ref={progRef} className="h-full origin-left" style={{ background: BRAND, transform: 'scaleX(0)', boxShadow: `0 0 10px ${BRAND}` }} />
+      </div>
+
+      {/* slim bar: search and status stay reachable once you scroll down */}
+      <div
+        className={`fixed inset-x-0 top-0 z-30 transition duration-300 ${showJump ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-full opacity-0'}`}
+        aria-hidden={!showJump}
+      >
+        <div className="border-b border-white/10 bg-[#08090b]/90 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-[1800px] items-center gap-3 px-4 py-2 md:px-6 xl:px-10">
+            <span className="hidden font-heading text-base font-black uppercase leading-none tracking-tighter sm:block">
+              <span className="text-white">GD</span> <span style={{ WebkitTextStroke: `1px ${BRAND}`, color: 'transparent' }}>Tracker</span>
+            </span>
+            <div className="relative min-w-0 flex-1 sm:max-w-md">
+              <ChevronRight className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2" style={{ color: BRAND }} />
+              <input
+                ref={miniRef}
+                tabIndex={showJump ? 0 : -1}
+                value={query}
+                onChange={(e) => updateQuery(e.target.value)}
+                placeholder="search name, creator or id"
+                aria-label="Search levels"
+                className="h-9 w-full border border-white/10 bg-black/40 pl-8 pr-3 font-mono text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                style={{ caretColor: BRAND }}
+              />
+            </div>
+            <div className="hidden md:flex">
+              {STATUSES.map((s) => {
+                const active = status === s.id
+                return (
+                  <button
+                    key={s.id}
+                    tabIndex={showJump ? 0 : -1}
+                    onClick={() => {
+                      savedStatus.current = null
+                      setStatus(s.id)
+                    }}
+                    aria-pressed={active}
+                    className={`px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider transition ${active ? 'text-black' : 'text-slate-500 hover:text-slate-200'}`}
+                    style={active ? { background: BRAND } : undefined}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* difficulty (demon faces) */}
+            <div ref={miniDiffRef} className="relative">
+              <button
+                tabIndex={showJump ? 0 : -1}
+                onClick={() => {
+                  setMiniDiffOpen((o) => !o)
+                  setMiniSortOpen(false)
+                }}
+                aria-expanded={miniDiffOpen}
+                aria-label="Filter by difficulty"
+                title="Difficulty"
+                className={`relative flex h-9 min-w-9 items-center justify-center gap-2 border px-2.5 transition ${diffs.length ? 'bg-white/[0.06] text-white' : 'border-white/10 bg-black/40 text-slate-300 hover:border-white/25 hover:text-white'}`}
+                style={diffs.length ? { borderColor: `${BRAND}99` } : undefined}
+              >
+                {diffs.length === 0 ? (
+                  <Swords className="size-4" style={{ color: BRAND }} />
+                ) : (
+                  <span className="flex -space-x-2">
+                    {diffs.slice(0, 3).map((d) => (
+                      <Face key={d} difficulty={d} tier="rated" className="size-5 object-contain" />
+                    ))}
+                  </span>
+                )}
+                {diffs.length > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 grid size-4 place-items-center font-mono text-[9px] font-extrabold text-black" style={{ background: BRAND }}>
+                    {diffs.length}
+                  </span>
+                )}
+              </button>
+              {showJump && miniDiffOpen && (
+                <div className="absolute left-0 z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] border border-white/15 bg-[#0d1013] shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)]">
+                  <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
+                    <span className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                      <Swords className="size-3.5" /> Difficulty
+                    </span>
+                    {diffs.length > 0 && (
+                      <button onClick={() => setDiffs([])} className="font-mono text-xs font-bold hover:underline" style={{ color: BRAND }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <ul className="p-1.5">
+                    {DIFFICULTIES.map((d) => {
+                      const on = diffs.includes(d)
+                      return (
+                        <li key={d}>
+                          <button onClick={() => setDiffs((x) => toggle(x, d))} aria-pressed={on} className={`flex w-full items-center gap-3 px-2.5 py-2 text-left transition ${on ? 'bg-white/[0.07]' : 'hover:bg-white/5'}`}>
+                            <Face difficulty={d} tier="rated" className="size-9 shrink-0 object-contain" />
+                            <span className="flex-1 font-mono text-sm font-bold uppercase tracking-wider text-slate-100">{d}</span>
+                            <span className="font-mono text-xs font-semibold tabular-nums text-slate-500">{counts.d[d]}</span>
+                            <span className={`grid size-5 place-items-center border transition ${on ? 'border-transparent' : 'border-white/20'}`} style={on ? { background: DIFF_COLOR[d] } : undefined}>
+                              {on && <Check className="size-3.5 text-black" />}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* sort (Hardest, Recent, ...) */}
+            <div ref={miniSortRef} className="relative">
+              <button
+                tabIndex={showJump ? 0 : -1}
+                onClick={() => {
+                  setMiniSortOpen((o) => !o)
+                  setMiniDiffOpen(false)
+                }}
+                aria-expanded={miniSortOpen}
+                className="flex h-9 items-center gap-2 border border-white/10 bg-black/40 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-slate-300 transition hover:border-white/25 hover:text-white"
+              >
+                <ArrowUpDown className="size-3.5 shrink-0" style={{ color: BRAND }} />
+                <span className="hidden sm:inline">{sortLabel}</span>
+                <ChevronDown className={`size-3.5 shrink-0 text-slate-500 transition ${miniSortOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {showJump && miniSortOpen && (
+                <div className="absolute right-0 z-40 mt-2 w-56 max-w-[calc(100vw-2rem)] border border-white/15 bg-[#0d1013] p-1 shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)]">
+                  {SORTS.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => {
+                        setSort(o.id)
+                        setMiniSortOpen(false)
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-2.5 text-left font-mono text-xs font-bold uppercase tracking-wider transition ${sort === o.id ? 'bg-white/[0.07]' : 'text-slate-300 hover:bg-white/5'}`}
+                      style={sort === o.id ? { color: BRAND } : undefined}
+                    >
+                      {o.label}
+                      {sort === o.id && <Check className="size-4" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* view */}
+            <div className="flex border border-white/10 bg-black/40">
+              {([['grid', LayoutGrid], ['list', List]] as const).map(([id, Icon]) => (
+                <button
+                  key={id}
+                  tabIndex={showJump ? 0 : -1}
+                  onClick={() => setView(id)}
+                  aria-label={`${id} view`}
+                  aria-pressed={view === id}
+                  className={`grid size-9 place-items-center transition ${view === id ? 'text-black' : 'text-slate-500 hover:text-slate-200'}`}
+                  style={view === id ? { background: BRAND } : undefined}
+                >
+                  <Icon className="size-3.5" />
+                </button>
+              ))}
+            </div>
+
+            <span className="ml-auto hidden font-mono text-xs text-slate-500 lg:block">
+              <span className="font-bold tabular-nums text-white">{String(filtered.length).padStart(3, '0')}</span> / {levels.length}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-7 p-4 md:p-6 xl:px-10">
@@ -1249,44 +1570,13 @@ export default function LevelsPage() {
           ))}
         </Cut>
 
-        {/* ------------------------------------------------------------ Resume strip */}
+        {/* ------------------------------------------------------------ Target banner */}
         {loading ? (
-          <div className="gl-wave h-[76px] border border-white/10 bg-[#0d1013]">
+          <div className="gl-wave h-[196px] border border-white/10 bg-[#0d1013]">
             <span className="gl-fill block h-full w-full opacity-60" />
           </div>
         ) : (
-          resume && (
-            <Link href={`/levels/${resume.id}`} onClickCapture={persist} className="gl-lift group block" style={{ '--ac': BRAND } as CSSProperties}>
-              <Cut c={14} className="group-hover:[--bd:var(--ac)]" inner="flex items-center gap-4 overflow-hidden py-3 pl-6 pr-4">
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-30 [mask-image:linear-gradient(to_left,#000,transparent)]">
-                  <Thumb level={resume} className="h-full w-full" />
-                </div>
-                <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: BRAND }} aria-hidden="true" />
-                <div className="relative hidden shrink-0 sm:block">
-                  <div className={`${mono} flex items-center gap-1.5`} style={{ color: BRAND }}>
-                    <Crosshair className="size-3.5" /> Next target
-                  </div>
-                  <div className="mt-0.5 font-mono text-[10px] text-slate-500" suppressHydrationWarning>
-                    {relativeTime(resume.lastPlayedAt, now) || ' '}
-                  </div>
-                </div>
-                <Face difficulty={resume.demonDifficulty} tier={toTier(resume.rating)} className={`relative size-12 shrink-0 object-contain ${TIER_STYLE[toTier(resume.rating)].glow}`} />
-                <div className="relative min-w-0 flex-1">
-                  <div className="truncate font-heading text-lg font-black uppercase tracking-tight text-white sm:text-xl">{resume.name}</div>
-                  <div className="truncate font-mono text-[11px] text-slate-500">
-                    {resume.totalAttempts.toLocaleString('en-US')} attempts · by {resume.creator}
-                  </div>
-                </div>
-                <div className="relative hidden w-48 shrink-0 lg:block">
-                  <TickBar value={resume.progress} accent={accentOf(resume)} n={22} className="h-2" />
-                </div>
-                <div className="relative shrink-0 font-heading text-3xl font-black tabular-nums" style={{ color: accentOf(resume) }}>
-                  {resume.progress}%
-                </div>
-                <ArrowRight className="relative hidden size-5 shrink-0 text-slate-500 transition duration-300 group-hover:translate-x-1 group-hover:text-white sm:block" />
-              </Cut>
-            </Link>
-          )
+          resume && <TargetBanner level={resume} now={now} onNavigate={persist} />
         )}
 
         {/* ------------------------------------------------------------ Threat ladder */}
