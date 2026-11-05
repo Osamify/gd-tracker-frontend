@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   ArrowUpDown,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Crosshair,
@@ -20,7 +21,6 @@ import {
   Play,
   RotateCcw,
   Search,
-  SlidersHorizontal,
   Skull,
   Sparkles,
   Star,
@@ -239,12 +239,10 @@ const fmtTier = (n: number) => n.toFixed(2)
  *  3. otherwise (or on a tie) the GDDP tier, higher = harder
  */
 function hardest(a: LevelItem, b: LevelItem) {
-  const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
-  if (d) return d
-  if (a.demonDifficulty === 'Extreme') {
-    const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
-    if (r) return r
-  }
+  // if (a.demonDifficulty === 'Extreme') {
+  //   const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
+  //   if (r) return r
+  // }
   return (b.gddpTier ?? 0) - (a.gddpTier ?? 0) || a.name.localeCompare(b.name)
 }
 
@@ -981,7 +979,168 @@ function TargetBanner({ level, now, onNavigate }: { level: LevelItem; now: numbe
   )
 }
 
-type SavedState = { visible?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
+const PER_PAGE_OPTIONS = [9, 15, 30, 60, 99] // cards per page you can choose
+const DEFAULT_PER_PAGE = 15
+
+/** 1 … 4 5 6 … 20 : first, last, and the pages around the current one. */
+function pageList(page: number, pages: number): (number | '…')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1)
+  let s = Math.max(2, page - 1)
+  let e = Math.min(pages - 1, page + 1)
+  if (page <= 3) e = 4
+  if (page >= pages - 2) s = pages - 3
+  const out: (number | '…')[] = [1]
+  if (s > 2) out.push('…')
+  for (let i = s; i <= e; i++) out.push(i)
+  if (e < pages - 1) out.push('…')
+  out.push(pages)
+  return out
+}
+
+function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }: { page: number; pages: number; total: number; from: number; to: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void }) {
+  const pad = (n: number) => String(n).padStart(3, '0')
+  const [jump, setJump] = useState('')
+  const [ppOpen, setPpOpen] = useState(false)
+  const ppRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!ppOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (ppRef.current && !ppRef.current.contains(e.target as Node)) setPpOpen(false)
+    }
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPpOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onEsc)
+    }
+  }, [ppOpen])
+  const go = () => {
+    const n = Math.round(Number(jump))
+    if (Number.isFinite(n) && n >= 1) onPage(Math.min(n, pages))
+    setJump('')
+  }
+  const box = 'grid size-9 place-items-center border font-mono text-xs font-bold tabular-nums transition sm:size-10'
+  const idle = 'border-white/10 bg-[#0d1013] text-slate-300 hover:border-white/30 hover:text-white'
+  const inputCls = 'h-9 w-16 border border-white/10 bg-black/40 px-2 text-center font-mono text-xs tabular-nums text-white placeholder:text-slate-500 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+  const focusOn = (e: ReactFocusEvent<HTMLInputElement>) => (e.currentTarget.style.borderColor = `${BRAND}99`)
+  const focusOff = (e: ReactFocusEvent<HTMLInputElement>) => (e.currentTarget.style.borderColor = '')
+  return (
+    <nav aria-label="Pages" className="flex flex-col items-center gap-4 border-t border-white/10 pb-20 pt-5 lg:flex-row lg:justify-between lg:pb-2 lg:pr-16">
+      {/* how many are on screen (last on phones) */}
+      <p className="order-3 font-mono text-[11px] text-slate-500 lg:order-none lg:text-xs">
+        Showing{' '}
+        <span className="font-bold tabular-nums text-white">
+          {pad(from)}-{pad(to)}
+        </span>{' '}
+        of {total.toLocaleString('en-US')}
+      </p>
+
+      {/* the pages */}
+      <div className="order-1 flex items-center gap-1.5 lg:order-none">
+        <button onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page" className={`${box} ${idle} disabled:pointer-events-none disabled:opacity-30`}>
+          <ChevronLeft className="size-4" />
+        </button>
+
+        {/* phones: "Page [3] of 10" (type a number to jump) */}
+        <form
+          className="flex items-center gap-2 px-1 font-mono text-xs text-slate-400 sm:hidden"
+          onSubmit={(e) => {
+            e.preventDefault()
+            go()
+          }}
+        >
+          <span>Page</span>
+          <input type="number" min={1} max={pages} inputMode="numeric" enterKeyHint="go" aria-label="Go to page" value={jump} onChange={(e) => setJump(e.target.value)} placeholder={String(page)} className={inputCls} onFocus={focusOn} onBlur={focusOff} />
+          <span>
+            of <span className="font-bold text-white">{pages}</span>
+          </span>
+        </form>
+
+        {/* tablets and up: numbered pages */}
+        <div className="hidden items-center gap-1.5 sm:flex">
+          {pageList(page, pages).map((p, i) =>
+            p === '…' ? (
+              <span key={`gap${i}`} className="grid size-10 place-items-center font-mono text-xs text-slate-600" aria-hidden="true">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => onPage(p)}
+                aria-label={`Page ${p}`}
+                aria-current={p === page ? 'page' : undefined}
+                className={`${box} ${p === page ? 'border-transparent text-black' : idle}`}
+                style={p === page ? { background: BRAND } : undefined}
+              >
+                {p}
+              </button>
+            ),
+          )}
+        </div>
+
+        <button onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page" className={`${box} ${idle} disabled:pointer-events-none disabled:opacity-30`}>
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+
+      {/* go to (only when there are many pages) + how many per page */}
+      <div className="order-2 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 lg:order-none">
+        {pages > 12 && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              go()
+            }}
+            className="hidden items-center gap-2 sm:flex"
+          >
+            <label htmlFor="gd-goto">Go to</label>
+            <input id="gd-goto" type="number" min={1} max={pages} inputMode="numeric" enterKeyHint="go" value={jump} onChange={(e) => setJump(e.target.value)} placeholder={String(page)} className={inputCls} onFocus={focusOn} onBlur={focusOff} />
+          </form>
+        )}
+        <div ref={ppRef} className="relative flex items-center gap-2.5">
+          <span>Per page</span>
+          <button
+            onClick={() => setPpOpen((o) => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={ppOpen}
+            className="flex h-9 min-w-20 items-center justify-between gap-3 border border-white/10 bg-black/40 px-3 text-xs tabular-nums text-white transition hover:border-white/30"
+            style={ppOpen ? { borderColor: `${BRAND}99` } : undefined}
+          >
+            {perPage}
+            <ChevronDown className={`size-4 text-slate-500 transition ${ppOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {ppOpen && (
+            <div role="listbox" className="absolute bottom-full right-0 z-40 mb-2 w-44 border border-white/15 bg-[#0d1013] p-1 shadow-[0_-24px_60px_-12px_rgba(0,0,0,.9)]">
+              {PER_PAGE_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  role="option"
+                  aria-selected={perPage === n}
+                  onClick={() => {
+                    onPerPage(n)
+                    setPpOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-xs tracking-wider transition ${perPage === n ? 'bg-white/[0.07]' : 'text-slate-300 hover:bg-white/5'}`}
+                  style={perPage === n ? { color: BRAND } : undefined}
+                >
+                  <span>
+                    {n} <span className="text-slate-500">per page</span>
+                  </span>
+                  {perPage === n && <Check className="size-4" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+type SavedState = { page?: number; perPage?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
 
 /**
  * Only used when you come Back inside the app (the levels are cached, so this render is not a hydration).
@@ -1005,9 +1164,6 @@ function readLocal<T extends string>(key: string, ok: (v: string) => boolean, fa
   }
 }
 
-const FIRST_PAGE = 15 // cards shown at first
-const PAGE_SIZE = 12 // cards added by each "Show more"
-
 export default function LevelsPage() {
   const { levels, loading, error, retry } = useLevels()
 
@@ -1019,7 +1175,11 @@ export default function LevelsPage() {
   const [status, setStatus] = useState<StatusId>(STATUSES.some((x) => x.id === init?.status) ? (init!.status as StatusId) : 'beaten')
   const [sort, setSort] = useState<SortId>(() => readLocal('gd-levels-sort-v2', (v) => SORTS.some((x) => x.id === v), 'difficulty') as SortId)
   const [view, setView] = useState<'grid' | 'list'>(() => readLocal('gd-levels-view', (v) => v === 'grid' || v === 'list', 'grid') as 'grid' | 'list')
-  const [visible, setVisible] = useState(init && Number.isFinite(init.visible) ? Math.max(FIRST_PAGE, init.visible!) : FIRST_PAGE)
+  const [page, setPage] = useState(init && Number.isFinite(init.page) ? Math.max(1, init.page!) : 1)
+  const [perPage, setPerPage] = useState<number>(() => {
+    const saved = Number(init?.perPage)
+    return PER_PAGE_OPTIONS.includes(saved) ? saved : Number(readLocal('gd-levels-perpage', (x) => PER_PAGE_OPTIONS.includes(Number(x)), String(DEFAULT_PER_PAGE)))
+  })
   const [sortOpen, setSortOpen] = useState(false)
   const [miniSortOpen, setMiniSortOpen] = useState(false)
   const miniSortRef = useRef<HTMLDivElement>(null)
@@ -1067,14 +1227,17 @@ export default function LevelsPage() {
       const v = localStorage.getItem('gd-levels-view') as 'grid' | 'list' | null
       if (s && SORTS.some((x) => x.id === s)) setSort(s)
       if (v === 'grid' || v === 'list') setView(v)
+      const pp = Number(localStorage.getItem('gd-levels-perpage'))
+      if (PER_PAGE_OPTIONS.includes(pp)) setPerPage(pp)
     } catch { }
   }, [])
   useEffect(() => {
     try {
       localStorage.setItem('gd-levels-sort-v2', sort)
       localStorage.setItem('gd-levels-view', view)
+      localStorage.setItem('gd-levels-perpage', String(perPage))
     } catch { }
-  }, [sort, view])
+  }, [sort, view, perPage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1119,8 +1282,8 @@ export default function LevelsPage() {
   }, [])
 
   // ---- remember where you were (filters, how many cards are loaded, scroll), so Back from a level lands in the same place ----
-  const stateRef = useRef({ visible: FIRST_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId })
-  stateRef.current = { visible, query, diffs, status }
+  const stateRef = useRef({ page: 1, perPage: DEFAULT_PER_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId })
+  stateRef.current = { page, perPage, query, diffs, status }
   const restoreRef = useRef<{ scrollY: number } | null>(init ? { scrollY: Number(init.scrollY) || 0 } : null)
   const persist = useCallback(() => {
     try {
@@ -1143,11 +1306,19 @@ export default function LevelsPage() {
       if (Array.isArray(v.diffs)) setDiffs(v.diffs.filter((d: string) => (DIFFICULTIES as string[]).includes(d)) as Difficulty[])
       if (STATUSES.some((x) => x.id === v.status)) setStatus(v.status)
       if (STATUSES.some((x) => x.id === v.saved)) savedStatus.current = v.saved
-      if (Number.isFinite(v.visible)) setVisible(Math.max(FIRST_PAGE, v.visible))
+      if (Number.isFinite(v.perPage) && PER_PAGE_OPTIONS.includes(v.perPage)) setPerPage(v.perPage)
+      if (Number.isFinite(v.page)) setPage(Math.max(1, v.page))
     } catch { }
   }, [init])
 
   // a new filter or sort starts from the first page again (not while restoring, and not on the first run)
+  // after a page change or a new filter: scroll back up to the first result (just under the slim bar)
+  const scrollToResults = useCallback(() => {
+    const bar = toolbarRef.current
+    if (!bar) return
+    const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
+    if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }, [])
   const filterKey = JSON.stringify([query, diffs, status, sort])
   const lastKey = useRef(filterKey)
   useEffect(() => {
@@ -1157,14 +1328,9 @@ export default function LevelsPage() {
     }
     if (lastKey.current === filterKey) return
     lastKey.current = filterKey
-    setVisible(FIRST_PAGE)
-    // changed from the slim bar while scrolled down: go back up to the first result (just under the slim bar)
-    const bar = toolbarRef.current
-    if (bar) {
-      const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
-      if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-    }
-  }, [filterKey])
+    setPage(1)
+    scrollToResults()
+  }, [filterKey, scrollToResults])
 
   // 2) once the levels are on screen: hold the page at your old spot, and only SHOW it once it has stayed there for a few frames.
   //    - scrollTo uses behavior 'instant': if your CSS has `scroll-behavior: smooth` on <html>, a normal scrollTo would glide down
@@ -1215,7 +1381,7 @@ export default function LevelsPage() {
   //    router moves), when the filters or "Load more" change, and when the tab is hidden or closed.
   useEffect(() => {
     if (!restoreRef.current) persist()
-  }, [visible, query, diffs, status, persist])
+  }, [page, perPage, query, diffs, status, persist])
   useEffect(() => {
     const onHide = () => {
       if (!restoreRef.current) persist()
@@ -1311,12 +1477,43 @@ export default function LevelsPage() {
     setStatus('all')
   }
 
-  const shown = filtered.slice(0, visible)
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const curPage = Math.min(page, pages)
+  const pageStart = (curPage - 1) * perPage
+  const shown = filtered.slice(pageStart, pageStart + perPage)
+  // if the list got shorter (new data, filters), never stay on a page that no longer exists
+  useEffect(() => {
+    if (!loading && page > pages) setPage(pages)
+  }, [loading, page, pages])
+  const changePerPage = (n: number) => {
+    if (!PER_PAGE_OPTIONS.includes(n)) return
+    setPerPage(n)
+    setPage(1)
+    scrollToResults()
+  }
+  const goPage = (p: number) => {
+    setPage(Math.min(Math.max(1, p), pages))
+    scrollToResults()
+  }
+  // left / right arrow keys flip pages (not while typing)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      const next = e.key === 'ArrowRight' ? curPage + 1 : curPage - 1
+      if (next < 1 || next > pages) return
+      setPage(next)
+      scrollToResults()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [curPage, pages, scrollToResults])
   const sortLabel = SORTS.find((s) => s.id === sort)?.label
 
   showJumpRef.current = showJump
   const mono = 'font-mono text-[10px] font-bold uppercase tracking-[0.22em]'
-  const remaining = Math.max(0, filtered.length - visible)
 
   return (
     <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
@@ -1387,7 +1584,7 @@ export default function LevelsPage() {
             </div>
 
             {/* difficulty (demon faces) */}
-            <div ref={miniDiffRef} className="relative">
+            <div ref={miniDiffRef} className="sm:relative">
               <button
                 tabIndex={showJump ? 0 : -1}
                 onClick={() => {
@@ -1416,7 +1613,7 @@ export default function LevelsPage() {
                 )}
               </button>
               {showJump && miniDiffOpen && (
-                <div className="absolute left-0 z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] border border-white/15 bg-[#0d1013] shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)]">
+                <div className="absolute inset-x-3 top-full z-40 mt-2 border border-white/15 bg-[#0d1013] shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)] sm:inset-x-auto sm:left-0 sm:w-72">
                   <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
                     <span className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
                       <Swords className="size-3.5" /> Difficulty
@@ -1449,7 +1646,7 @@ export default function LevelsPage() {
             </div>
 
             {/* sort (Hardest, Recent, ...) */}
-            <div ref={miniSortRef} className="relative">
+            <div ref={miniSortRef} className="sm:relative">
               <button
                 tabIndex={showJump ? 0 : -1}
                 onClick={() => {
@@ -1464,7 +1661,7 @@ export default function LevelsPage() {
                 <ChevronDown className={`size-3.5 shrink-0 text-slate-500 transition ${miniSortOpen ? 'rotate-180' : ''}`} />
               </button>
               {showJump && miniSortOpen && (
-                <div className="absolute right-0 z-40 mt-2 w-56 max-w-[calc(100vw-2rem)] border border-white/15 bg-[#0d1013] p-1 shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)]">
+                <div className="absolute inset-x-3 top-full z-40 mt-2 border border-white/15 bg-[#0d1013] p-1 shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)] sm:inset-x-auto sm:right-0 sm:w-56">
                   {SORTS.map((o) => (
                     <button
                       key={o.id}
@@ -1503,6 +1700,29 @@ export default function LevelsPage() {
             <span className="ml-auto hidden font-mono text-xs text-slate-500 lg:block">
               <span className="font-bold tabular-nums text-white">{String(filtered.length).padStart(3, '0')}</span> / {levels.length}
             </span>
+          </div>
+
+          {/* phones: the status tabs get their own scrolling row (the wide layout shows them in the bar above) */}
+          <div className="flex overflow-x-auto border-t border-white/[0.06] px-2 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+            {STATUSES.map((st) => {
+              const active = status === st.id
+              return (
+                <button
+                  key={st.id}
+                  tabIndex={showJump ? 0 : -1}
+                  onClick={() => {
+                    savedStatus.current = null
+                    setStatus(st.id)
+                  }}
+                  aria-pressed={active}
+                  className={`relative shrink-0 px-3.5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] transition ${active ? 'text-white' : 'text-slate-500'}`}
+                >
+                  {st.label}
+                  <sup className="ml-1 tabular-nums" style={{ color: active ? BRAND : undefined }}>{counts.s[st.id]}</sup>
+                  {active && <span className="absolute inset-x-2 bottom-0 h-0.5" style={{ background: BRAND }} />}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -1867,27 +2087,20 @@ export default function LevelsPage() {
         ) : view === 'grid' ? (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelCard key={l.id} level={l} now={now} index={i} rank={i + 1} />
+              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelRow key={l.id} level={l} now={now} index={i} rank={i + 1} />
+              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} />
             ))}
           </div>
         )}
 
-        {/* ------------------------------------------------------------ Load more */}
-        {!loading && remaining > 0 && (
-          <button onClick={() => setVisible((v) => v + PAGE_SIZE)} className="group block w-full">
-            <Cut c={14} className="transition group-hover:[--bd:#d4ff3a]" inner="flex items-center justify-center gap-3 py-4 font-mono text-xs font-bold uppercase tracking-[0.25em] text-slate-300 transition group-hover:text-white">
-              <ChevronDown className="size-4" style={{ color: BRAND }} />
-              Load {Math.min(PAGE_SIZE, remaining)} more
-              <span className="text-slate-600">· {remaining} left</span>
-              <ChevronDown className="size-4" style={{ color: BRAND }} />
-            </Cut>
-          </button>
+        {/* ------------------------------------------------------------ Pages */}
+        {!loading && filtered.length > PER_PAGE_OPTIONS[0] && (
+          <Pager page={curPage} pages={pages} total={filtered.length} from={pageStart + 1} to={pageStart + shown.length} perPage={perPage} onPage={goPage} onPerPage={changePerPage} />
         )}
       </div>
 
@@ -1900,22 +2113,10 @@ export default function LevelsPage() {
         <button
           type="button"
           tabIndex={showJump ? 0 : -1}
-          onClick={() => {
-            toolbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            window.setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 450)
-          }}
-          className="flex h-11 items-center gap-2 border border-white/20 bg-[#0d1013]/95 px-4 font-mono text-xs font-bold uppercase tracking-wider text-slate-200 shadow-xl backdrop-blur-xl transition hover:border-white/50 hover:text-white"
-        >
-          <SlidersHorizontal className="size-4" style={{ color: BRAND }} />
-          Filters
-        </button>
-        <button
-          type="button"
-          tabIndex={showJump ? 0 : -1}
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           aria-label="Back to top"
           title="Back to top"
-          className="grid size-12 place-items-center text-black shadow-[0_8px_30px_-6px_rgba(212,255,58,.55)] transition hover:scale-105"
+          className="grid size-11 place-items-center text-black shadow-[0_8px_30px_-6px_rgba(212,255,58,.55)] transition hover:scale-105 sm:size-12"
           style={{ background: BRAND, clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
         >
           <ArrowUp className="size-5" />
