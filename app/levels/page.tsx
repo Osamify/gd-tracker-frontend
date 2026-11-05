@@ -29,10 +29,44 @@ import {
   X,
 } from 'lucide-react'
 
+/* ============================================================================
+ *  GD TRACKER · /levels   (app/levels/page.tsx)
+ *  ----------------------------------------------------------------------------
+ *  One big file on purpose: easy to paste and easy to search. Every section is
+ *  marked "SPLIT →" with the file it can move to, using the folders you already
+ *  have. To split: cut the section, paste it into the new file, add `export`
+ *  in front of it, and import it back here. The code itself does not change.
+ *
+ *  ORDER IN THIS FILE                     →  WHERE IT CAN GO
+ *   1. Types                               →  lib/levels-types.ts
+ *   2. useLevels()  (data + AREDL)         →  lib/use-levels.ts
+ *   3. Style tables, SORTS, STATUSES       →  lib/levels-config.ts
+ *   4. Helpers (pure functions)            →  lib/level-helpers.ts   (you already have it: merge, don't duplicate)
+ *   5. useCountUp / Num                    →  components/ui/num.tsx
+ *   6. BRAND, GREEN and the CSS string     →  lib/levels-config.ts (or app/globals.css)
+ *   7. Cut, Face, Thumb                    →  components/level/cut.tsx, face.tsx
+ *   8. Badges, Logo, small card parts      →  components/level/card-parts.tsx, components/ui/logo.tsx
+ *   9. LevelCard / LevelRow                →  components/tracker/levels-card.tsx, levels-row.tsx
+ *                                             (level-card.tsx already exists: use a different name)
+ *  10. SkeletonCard / SkeletonRow          →  components/tracker/levels-skeleton.tsx
+ *  11. ProgressRing + TargetBanner         →  components/tracker/target-banner.tsx
+ *  12. Pager + MiniPager                   →  components/ui/pager.tsx
+ *  13. Saved-state helpers                 →  lib/levels-state.ts
+ *  14. LevelsPage (state, effects, JSX)    →  stays in app/levels/page.tsx, and gets short once the rest is moved.
+ *      Its JSX blocks can also become: levels-masthead, levels-stats, levels-ladder,
+ *      levels-toolbar and levels-slim-bar (all in components/tracker/).
+ *
+ *  IF THE WORK IS SPLIT BETWEEN PEOPLE (no two people touch the same file):
+ *   - Data / backend ........ 1, 2, 4, 13   (what the API sends, caching, saved state)
+ *   - Visual design ......... 3, 5, 6, 7, 8, 9, 10, 11   (colours, cards, logo, animations)
+ *   - Navigation / filters .. 12 + the toolbar and slim-bar blocks of 14   (search, sort, pages)
+ * ============================================================================ */
+
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                     */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → lib/levels-types.ts (add `export` to each). The shapes of the data that /api/Levels sends.
 type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Insane' | 'Extreme'
 type Tier = 'rated' | 'featured' | 'epic' | 'legendary' | 'mythic'
 type Run = { startPercent: number; endPercent: number }
@@ -68,6 +102,10 @@ const TIERS: Tier[] = ['rated', 'featured', 'epic', 'legendary', 'mythic']
 /*  Data Fetching                                                             */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → lib/use-levels.ts (put "use client" at its top).
+// useLevels(): loads the levels once and keeps them in LEVELS_CACHE, so coming Back from a level is instant.
+// It refreshes quietly in the background and merges the AREDL position/points into Extreme demons.
+// Returns { levels, loading, error, retry }.
 const AREDL_URL = 'https://api.aredl.net/v2/api/aredl/levels'
 
 /**
@@ -181,6 +219,9 @@ function useLevels() {
 /*  Styling tables                                                            */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → lib/levels-config.ts.
+// Colours and labels per rating tier (rated/featured/epic/legendary/mythic) and per difficulty,
+// plus SORTS (the sort menu) and STATUSES (the All / In progress / Beaten / Not started tabs).
 const TIER_STYLE: Record<Tier, { label: string; chip: string; glow: string; ring: string }> = {
   rated: { label: 'Rated', chip: 'border-slate-600/60 bg-slate-700/40 text-slate-300', glow: 'drop-shadow-[0_0_12px_rgba(148,163,184,0.4)]', ring: 'hover:border-slate-500/50' },
   featured: { label: 'Featured', chip: 'border-yellow-400/40 bg-yellow-400/10 text-yellow-300', glow: 'drop-shadow-[0_0_14px_rgba(250,204,21,0.6)]', ring: 'hover:border-yellow-400/50' },
@@ -226,6 +267,8 @@ type StatusId = (typeof STATUSES)[number]['id']
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → lib/level-helpers.ts (you already have this file: merge it in, do not duplicate).
+// Pure functions with no React: is it beaten, the "hardest" ordering, durations, "x min ago", the status label.
 const isBeaten = (l: LevelItem) => l.progress >= 100 || Boolean(l.dateCompleted)
 const isFresh = (l: LevelItem) => l.progress === 0 && l.runs.length === 0
 
@@ -239,10 +282,12 @@ const fmtTier = (n: number) => n.toFixed(2)
  *  3. otherwise (or on a tie) the GDDP tier, higher = harder
  */
 function hardest(a: LevelItem, b: LevelItem) {
-  // if (a.demonDifficulty === 'Extreme') {
-  //   const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
-  //   if (r) return r
-  // }
+  const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
+  if (d) return d
+  if (a.demonDifficulty === 'Extreme') {
+    const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
+    if (r) return r
+  }
   return (b.gddpTier ?? 0) - (a.gddpTier ?? 0) || a.name.localeCompare(b.name)
 }
 
@@ -282,6 +327,7 @@ function statusOf(l: LevelItem, now: number | null): Status {
   return { kind: 'progress', label: 'In progress' }
 }
 
+// SPLIT → components/ui/num.tsx. <Num/> shows a number that counts up from 0 when it appears (hero stats, rings).
 function useCountUp(target: number, duration = 900) {
   const [value, setValue] = useState(0)
   const from = useRef(0)
@@ -317,6 +363,9 @@ function Num({ value, decimals = 0, suffix = '' }: { value: number; decimals?: n
   )
 }
 
+// SPLIT → lib/levels-config.ts.
+// BRAND = the lime accent of the page, GREEN = hover/progress colour on cards.
+// CSS = all the animations (rise-in, skeleton wave, tilt, ...). You can move that text to app/globals.css and delete the <style> tag.
 const BRAND = '#d4ff3a'
 /** Hover glow, borders and progress on the level cards and rows. */
 const GREEN = '#34d399'
@@ -351,6 +400,7 @@ html::-webkit-scrollbar-thumb:hover { filter: brightness(1.15) }
 /*  Small pieces                                                              */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → components/level/cut.tsx. <Cut/> is the panel with angled corners used by the stats, the ladder and the banner.
 /** Panel with cut (angled) corners and a 1px border. The border colour is the CSS variable --bd, so hover can change it. */
 const poly = (c: number) => `polygon(${c}px 0, 100% 0, 100% calc(100% - ${c}px), calc(100% - ${c}px) 100%, 0 100%, 0 ${c}px)`
 
@@ -364,6 +414,8 @@ function Cut({ c = 14, bd = 'rgba(255,255,255,.1)', bg = '#0d1013', className = 
   )
 }
 
+// SPLIT → components/level/face.tsx (Face + Thumb).
+// Face = the demon face image (falls back to the "rated" one if a file is missing). Thumb = the level thumbnail with a coloured fallback.
 /** /gdfaces/<difficulty>-<tier>.png, falling back to <difficulty>-rated.png if that file is missing. */
 function Face({ difficulty, tier, className }: { difficulty: Difficulty; tier: Tier; className?: string }) {
   const [stage, setStage] = useState(0)
@@ -414,6 +466,8 @@ const percentStyle = (accent: string): CSSProperties => ({
   color: 'transparent',
 })
 
+// SPLIT → components/level/card-parts.tsx (HoverGlow, TickBar, Medal, RankBadge, AredlBadge, StatusBadge, RatingChips, PlayingTag, Cell).
+// Small decorations used inside the cards and rows: the top-10 medals, the AREDL number badge, the status tag, the GDDP chip.
 function HoverGlow({ accent }: { accent: string }) {
   return (
     <span
@@ -599,6 +653,31 @@ function PlayingTag() {
   )
 }
 
+// SPLIT → components/ui/logo.tsx (export it, then use it anywhere: header, slim bar, 404 page, emails).
+// The GD monogram with a row of progress ticks under it (so the mark itself says "tracker"). Plain SVG: sharp at any size, no image file.
+// Change the colours with the three values below (tile, letter G, letter D).
+function Logo({ className = 'size-10' }: { className?: string }) {
+  const tile = '#0d1013'
+  const g = BRAND // the "G"
+  const d = '#ffffff' // the "D"
+  return (
+    <svg viewBox="0 0 200 200" className={className} role="img" aria-label="GD Tracker logo">
+      <path d="M22 0H178L200 22V178L178 200H22L0 178V22Z" fill={tile} />
+      <path d="M22 0H178L200 22V178L178 200H22L0 178V22Z" fill="none" stroke={g} strokeWidth="3" opacity=".35" />
+      {/* the letters */}
+      <g transform="translate(0 -14)">
+        <path d="M92 64H58Q42 64 42 80V120Q42 136 58 136H92V102H70" fill="none" stroke={g} strokeWidth="20" strokeLinejoin="miter" />
+        <path d="M120 64H136Q164 64 164 100Q164 136 136 136H120Z" fill="none" stroke={d} strokeWidth="20" strokeLinejoin="miter" />
+      </g>
+      {/* progress ticks (the "tracker" part): 7 of 10 are filled, like the bars in the stats boxes */}
+      {Array.from({ length: 10 }, (_, i) => (
+        <rect key={i} x={42 + i * 12.5} y="150" width="9.5" height="12" fill={g} opacity={i < 7 ? 1 : 0.22} />
+      ))}
+      <path d="M0 22V0H22M200 178V200H178" fill="none" stroke={g} strokeWidth="6" />
+    </svg>
+  )
+}
+
 function Cell({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0 border-l border-white/[0.08] pl-3 first:border-l-0 first:pl-0">
@@ -608,6 +687,9 @@ function Cell({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
+// SPLIT → components/tracker/levels-card.tsx.
+// The big full-art card of the grid view: art, rank, status, GDDP tier, percent, progress bar, 3D tilt on hover.
+// (components/tracker/level-card.tsx already exists, so give this one another name.)
 function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
@@ -727,6 +809,7 @@ function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number 
   )
 }
 
+// SPLIT → components/tracker/levels-row.tsx. The list-view version of the card (one row per level).
 function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
@@ -820,6 +903,8 @@ function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number |
 /*  Loading placeholders                                                      */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → components/tracker/levels-skeleton.tsx (SkeletonCard + SkeletonRow).
+// Placeholders with the same shape as the cards; the "wave" runs from left to right while the data loads.
 function SkeletonCard({ index }: { index: number }) {
   return (
     <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 8) * 60}ms`, '--d': `${(index % 3) * 0.22}s` } as CSSProperties}>
@@ -877,7 +962,11 @@ function SkeletonRow({ index }: { index: number }) {
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
 
+// SPLIT → lib/levels-state.ts (together with SavedState, readSavedState and readLocal further down).
+// sessionStorage key where the page remembers filters, page and scroll position, so Back from a level lands in the same place.
 const SAVE_KEY = 'gd-levels-state-v1' // sessionStorage: where you were in the list
+// SPLIT → components/tracker/target-banner.tsx (ProgressRing + TargetBanner).
+// The "Target lock" banner: the hardest level you have not beaten yet (rated + tracked) with a rotating reticle and a progress ring.
 /** Round progress meter with a count-up number. */
 function ProgressRing({ value, size = 112 }: { value: number; size?: number }) {
   const id = useId()
@@ -979,6 +1068,8 @@ function TargetBanner({ level, now, onNavigate }: { level: LevelItem; now: numbe
   )
 }
 
+// SPLIT → components/ui/pager.tsx (PER_PAGE_OPTIONS, DEFAULT_PER_PAGE, pageList, Pager, MiniPager).
+// Pager = the bar at the bottom (page numbers, go to, per page).  MiniPager = the "‹ 3 / 10 ›" box in the slim bar (type a number to jump).
 const PER_PAGE_OPTIONS = [9, 15, 30, 60, 99] // cards per page you can choose
 const DEFAULT_PER_PAGE = 15
 
@@ -1140,6 +1231,64 @@ function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }: { p
   )
 }
 
+/** Tiny "‹ 3 / 10 ›" control for the slim bar. */
+function MiniPager({ page, pages, onPage, tabbable, className = '' }: { page: number; pages: number; onPage: (p: number) => void; tabbable: boolean; className?: string }) {
+  const btn = 'grid size-9 place-items-center text-slate-300 transition hover:text-white disabled:pointer-events-none disabled:opacity-30'
+  // click the number, type the page you want, press Enter (Esc cancels)
+  const [draft, setDraft] = useState<string | null>(null)
+  const cancel = useRef(false)
+  const commit = () => {
+    if (cancel.current) {
+      cancel.current = false
+      setDraft(null)
+      return
+    }
+    if (draft !== null) {
+      const n = Math.round(Number(draft))
+      if (draft !== '' && Number.isFinite(n) && n >= 1) onPage(Math.min(n, pages))
+      setDraft(null)
+    }
+  }
+  return (
+    <div className={`items-center border border-white/10 bg-black/40 ${className}`}>
+      <button tabIndex={tabbable ? 0 : -1} aria-label="Previous page" disabled={page <= 1} onClick={() => onPage(page - 1)} className={btn}>
+        <ChevronLeft className="size-3.5" />
+      </button>
+      <div className="flex items-center gap-1 px-1 font-mono text-[11px] font-bold tabular-nums">
+        <input
+          type="text"
+          inputMode="numeric"
+          enterKeyHint="go"
+          tabIndex={tabbable ? 0 : -1}
+          aria-label={`Page ${page} of ${pages}. Type a page number and press Enter`}
+          title="Type a page number and press Enter"
+          value={draft ?? String(page)}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          onFocus={(e) => {
+            setDraft(String(page))
+            e.currentTarget.select()
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') {
+              cancel.current = true
+              e.currentTarget.blur()
+            }
+          }}
+          className="h-6 w-10 border border-white/10 bg-black/50 text-center text-white focus:outline-none"
+          style={draft !== null ? { borderColor: `${BRAND}99` } : undefined}
+        />
+        <span className="text-slate-600">/ {pages}</span>
+      </div>
+      <button tabIndex={tabbable ? 0 : -1} aria-label="Next page" disabled={page >= pages} onClick={() => onPage(page + 1)} className={btn}>
+        <ChevronRight className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+// SPLIT → lib/levels-state.ts. What is stored in sessionStorage (filters, page, scroll) and how it is read back safely.
 type SavedState = { page?: number; perPage?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
 
 /**
@@ -1164,9 +1313,18 @@ function readLocal<T extends string>(key: string, ok: (v: string) => boolean, fa
   }
 }
 
+/* ----------------------------------------------------------------------------
+ *  LevelsPage, in four parts:
+ *   1. STATE ........... everything you can change (search, filters, sort, view, page)
+ *   2. EFFECTS ......... remember + restore the position, page/scroll behaviour, keyboard shortcuts
+ *   3. DERIVED DATA .... filtered/sorted list, stats, ladder, the page slice (recalculated, never stored)
+ *   4. SCREEN (JSX) .... masthead, stats, target banner, ladder, filter bar, cards, pager, slim bar
+ * ---------------------------------------------------------------------------- */
 export default function LevelsPage() {
   const { levels, loading, error, retry } = useLevels()
 
+    // ── 1. STATE ─────────────────────────────────────────────────────────────
+    // `init` is what was saved when you opened a level; it is used so that Back puts everything where you left it.
   const [init] = useState(readSavedState)
   // Back inside the app: the page stays invisible for a split second until it has been scrolled to your old spot (no jump from the top)
   const [revealed, setRevealed] = useState(!init)
@@ -1281,6 +1439,7 @@ export default function LevelsPage() {
     }
   }, [])
 
+    // ── 2. EFFECTS ───────────────────────────────────────────────────────────
   // ---- remember where you were (filters, how many cards are loaded, scroll), so Back from a level lands in the same place ----
   const stateRef = useRef({ page: 1, perPage: DEFAULT_PER_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId })
   stateRef.current = { page, perPage, query, diffs, status }
@@ -1313,11 +1472,11 @@ export default function LevelsPage() {
 
   // a new filter or sort starts from the first page again (not while restoring, and not on the first run)
   // after a page change or a new filter: scroll back up to the first result (just under the slim bar)
-  const scrollToResults = useCallback(() => {
+  const scrollToResults = useCallback((slack = 0) => {
     const bar = toolbarRef.current
     if (!bar) return
     const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
-    if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    if (window.scrollY > top + slack) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }, [])
   const filterKey = JSON.stringify([query, diffs, status, sort])
   const lastKey = useRef(filterKey)
@@ -1393,7 +1552,10 @@ export default function LevelsPage() {
   // the jump buttons appear once you have scrolled down a bit
   useEffect(() => {
     const onScroll = () => {
-      setShowJump(window.scrollY > 700)
+      // the slim bar shows as soon as the big filter box has scrolled out of view (not at a fixed distance, so it
+      // never vanishes right after a page change scrolls you up to the first result)
+      const bar = toolbarRef.current
+      setShowJump(bar ? bar.getBoundingClientRect().bottom < 120 : window.scrollY > 700)
       const max = document.documentElement.scrollHeight - window.innerHeight
       if (progRef.current) progRef.current.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`
     }
@@ -1404,6 +1566,9 @@ export default function LevelsPage() {
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
 
+    // ── 3. DERIVED DATA ──────────────────────────────────────────────────────
+    // Nothing below is stored: it is recalculated from the state whenever it changes.
+    // filtered = search + status + difficulty, then sorted by the chosen sort.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const out = levels.filter((l) => {
@@ -1426,6 +1591,7 @@ export default function LevelsPage() {
     return [...out].sort(cmp[sort])
   }, [levels, query, diffs, status, sort])
 
+    // numbers for the hero: total, beaten, in progress, attempts, average best run
   const stats = useMemo(() => {
     const beaten = levels.filter(isBeaten).length
     const inProgress = levels.filter((l) => !isBeaten(l) && !isFresh(l)).length
@@ -1491,6 +1657,11 @@ export default function LevelsPage() {
     setPage(1)
     scrollToResults()
   }
+  // flipping from the slim bar or the arrow keys: if you are already looking at the first cards, stay exactly where you are
+  const flipPage = (p: number) => {
+    setPage(Math.min(Math.max(1, p), pages))
+    scrollToResults(160)
+  }
   const goPage = (p: number) => {
     setPage(Math.min(Math.max(1, p), pages))
     scrollToResults()
@@ -1505,7 +1676,7 @@ export default function LevelsPage() {
       const next = e.key === 'ArrowRight' ? curPage + 1 : curPage - 1
       if (next < 1 || next > pages) return
       setPage(next)
-      scrollToResults()
+      scrollToResults(160)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1515,6 +1686,9 @@ export default function LevelsPage() {
   showJumpRef.current = showJump
   const mono = 'font-mono text-[10px] font-bold uppercase tracking-[0.22em]'
 
+  // ── 4. SCREEN ────────────────────────────────────────────────────────────
+  // Top to bottom: masthead, stats, target banner, difficulty ladder, filter bar, results, pager. The slim bar and the
+  // buttons at the bottom are fixed on screen and appear once you scroll down.
   return (
     <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
       <style>{CSS}</style>
@@ -1539,15 +1713,19 @@ export default function LevelsPage() {
         <div ref={progRef} className="h-full origin-left" style={{ background: BRAND, transform: 'scaleX(0)', boxShadow: `0 0 10px ${BRAND}` }} />
       </div>
 
-      {/* slim bar: search and status stay reachable once you scroll down */}
+      {/* slim bar: appears when the big filter box has scrolled out of view.  SPLIT → components/tracker/levels-slim-bar.tsx (logo, search, status, difficulty, sort, view, MiniPager) */}
       <div
         className={`fixed inset-x-0 top-0 z-30 transition duration-300 ${showJump ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-full opacity-0'}`}
         aria-hidden={!showJump}
       >
         <div className="border-b border-white/10 bg-[#08090b]/90 backdrop-blur-xl">
           <div className="mx-auto flex max-w-[1800px] items-center gap-3 px-4 py-2 md:px-6 xl:px-10">
-            <span className="hidden font-heading text-base font-black uppercase leading-none tracking-tighter sm:block">
-              <span className="text-white">GD</span> <span style={{ WebkitTextStroke: `1px ${BRAND}`, color: 'transparent' }}>Tracker</span>
+            <span className="flex shrink-0 items-center gap-2.5">
+              <Logo className="size-8" />
+              <span className="hidden font-heading text-base font-black uppercase leading-none tracking-tighter xl:block" aria-label="GD Tracker">
+                <span className="sr-only">GD </span>
+                <span style={{ WebkitTextStroke: `1px ${BRAND}`, color: 'transparent' }}>Tracker</span>
+              </span>
             </span>
             <div className="relative min-w-0 flex-1 sm:max-w-md">
               <ChevronRight className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2" style={{ color: BRAND }} />
@@ -1697,13 +1875,16 @@ export default function LevelsPage() {
               ))}
             </div>
 
+            {pages > 1 && <MiniPager page={curPage} pages={pages} onPage={flipPage} tabbable={showJump} className="ml-auto hidden md:flex lg:ml-0" />}
+
             <span className="ml-auto hidden font-mono text-xs text-slate-500 lg:block">
               <span className="font-bold tabular-nums text-white">{String(filtered.length).padStart(3, '0')}</span> / {levels.length}
             </span>
           </div>
 
           {/* phones: the status tabs get their own scrolling row (the wide layout shows them in the bar above) */}
-          <div className="flex overflow-x-auto border-t border-white/[0.06] px-2 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+          <div className="flex items-stretch border-t border-white/[0.06] md:hidden">
+          <div className="flex min-w-0 flex-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {STATUSES.map((st) => {
               const active = status === st.id
               return (
@@ -1724,24 +1905,30 @@ export default function LevelsPage() {
               )
             })}
           </div>
+          {pages > 1 && <MiniPager page={curPage} pages={pages} onPage={flipPage} tabbable={showJump} className="flex shrink-0 border-y-0 border-r-0" />}
+          </div>
         </div>
       </div>
 
       <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-7 p-4 md:p-6 xl:px-10">
-        {/* ------------------------------------------------------------ Masthead */}
+        {/* ------------------------------------------------------------ Masthead   SPLIT → components/tracker/levels-masthead.tsx (logo, title, ruler) */}
         <header className="gl-rise">
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
+            <div className="flex items-center gap-4 sm:gap-6">
+              <Logo className="size-16 shrink-0 sm:size-20 xl:size-24" />
+              <div>
               <div className={`${mono} mb-3 flex items-center gap-2 !tracking-[0.35em] text-slate-500`}>
                 <span className="size-1.5" style={{ background: BRAND }} />
                 Practice log
                 <span className="text-slate-700">//</span>
                 Demon levels
               </div>
-              <h1 className="font-heading text-5xl font-black uppercase leading-[0.9] tracking-tighter sm:text-6xl xl:text-7xl">
-                <span className="text-white">GD</span>{' '}
+              {/* the logo already says "GD", so the title is just "Tracker" (the tab title is still "GD Tracker") */}
+              <h1 className="font-heading text-5xl font-black uppercase leading-[0.9] tracking-tighter sm:text-6xl xl:text-7xl" aria-label="GD Tracker">
+                <span className="sr-only">GD </span>
                 <span style={{ WebkitTextStroke: `1.5px ${BRAND}`, color: 'transparent' }}>Tracker</span>
               </h1>
+              </div>
             </div>
             <div className={`${mono} flex items-center gap-2 border border-white/10 bg-black/30 px-3 py-2`} style={{ color: BRAND }}>
               <span className="size-2 animate-pulse" style={{ background: BRAND }} />
@@ -1765,7 +1952,7 @@ export default function LevelsPage() {
           <div className="h-px w-full" style={{ background: `linear-gradient(90deg, ${BRAND}, rgba(255,255,255,.14) 40%, transparent)` }} />
         </header>
 
-        {/* ------------------------------------------------------------ Telemetry */}
+        {/* ------------------------------------------------------------ Telemetry   SPLIT → components/tracker/levels-stats.tsx (the five number boxes; needs `stats`, `loading`) */}
         <Cut c={16} bg="rgba(255,255,255,.09)" inner="grid grid-cols-2 gap-px md:grid-cols-5">
           {[
             { label: 'Levels', value: <Num value={stats.total} />, sub: 'in your log' },
@@ -1790,7 +1977,7 @@ export default function LevelsPage() {
           ))}
         </Cut>
 
-        {/* ------------------------------------------------------------ Target banner */}
+        {/* ------------------------------------------------------------ Target banner   already a component: TargetBanner (needs `resume`, `now`, `persist`) */}
         {loading ? (
           <div className="gl-wave h-[196px] border border-white/10 bg-[#0d1013]">
             <span className="gl-fill block h-full w-full opacity-60" />
@@ -1799,7 +1986,7 @@ export default function LevelsPage() {
           resume && <TargetBanner level={resume} now={now} onNavigate={persist} />
         )}
 
-        {/* ------------------------------------------------------------ Threat ladder */}
+        {/* ------------------------------------------------------------ Threat ladder   SPLIT → components/tracker/levels-ladder.tsx (difficulty tiles that filter; needs `ladder`, `diffs`, `setDiffs`) */}
         <div>
           <div className={`${mono} mb-2 flex items-center justify-between !tracking-[0.3em] text-slate-500`}>
             <span className="flex items-center gap-2">
@@ -1857,7 +2044,7 @@ export default function LevelsPage() {
           </div>
         </div>
 
-        {/* ------------------------------------------------------------ Command bar */}
+        {/* ------------------------------------------------------------ Command bar   SPLIT → components/tracker/levels-toolbar.tsx (search, difficulty, sort, view, status tabs, reset) */}
         <section ref={toolbarRef} aria-busy={loading} className={`relative z-20 scroll-mt-4 transition-opacity duration-300 ${loading ? 'pointer-events-none select-none opacity-50' : ''}`}>
           <div className="relative border border-white/10 bg-[#0d1013] p-3 sm:p-4">
             {/* corner marks */}
@@ -2045,7 +2232,7 @@ export default function LevelsPage() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------------ Levels */}
+        {/* ------------------------------------------------------------ Levels   loading skeletons, error, empty state, then the cards (grid) or rows (list) of the current page */}
         {loading ? (
           <div aria-busy="true" aria-label="Loading levels">
             {view === 'grid' ? (
@@ -2098,13 +2285,13 @@ export default function LevelsPage() {
           </div>
         )}
 
-        {/* ------------------------------------------------------------ Pages */}
+        {/* ------------------------------------------------------------ Pages   uses Pager (bottom bar) */}
         {!loading && filtered.length > PER_PAGE_OPTIONS[0] && (
           <Pager page={curPage} pages={pages} total={filtered.length} from={pageStart + 1} to={pageStart + shown.length} perPage={perPage} onPage={goPage} onPerPage={changePerPage} />
         )}
       </div>
 
-      {/* ------------------------------------------------------------ Jump buttons */}
+      {/* ------------------------------------------------------------ Jump buttons   the round back-to-top button (fixed, bottom right) */}
       <div
         className={`fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 transition duration-300 sm:bottom-6 sm:right-6 ${showJump ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
