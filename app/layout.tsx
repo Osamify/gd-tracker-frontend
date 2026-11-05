@@ -14,10 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'GD Tracker',
-  description: 'Track your Geometry Dash progress, death heatmaps, and stats.',
-  icons: {
-    icon: './GDTracker-image-real.jpg'
-  }
+  description: 'Track your Geometry Dash progress, death heatmaps, and stats.'
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
