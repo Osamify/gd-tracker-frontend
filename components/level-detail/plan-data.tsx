@@ -2,7 +2,7 @@ import { Gauge } from "lucide-react";
 import { ReactNode } from "react";
 import { AnimatedNumber} from './ui'
 import {panel} from '../../lib/level-helpers'
-import { Run, RunPlan } from "@/lib/tracker";
+import { Run, RunPlan } from "@/lib/types";
 
 // MiniStat = the small boxes inside the 'Plan data' card (label on top, number below).
 function MiniStat({ label, value, tone = 'text-white' }: { label: string; value: ReactNode; tone?: string }) {

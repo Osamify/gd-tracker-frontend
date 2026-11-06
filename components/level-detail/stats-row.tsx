@@ -4,7 +4,7 @@ import { Timer, Skull, Trophy, Calendar, Layers } from "lucide-react";
 // 👇 Added formatDuration to the imports
 import { panel, formatDate, relativeTime, formatDuration } from '../../lib/level-helpers'
 import { AnimatedNumber } from "./ui";
-import { RunPlan } from "@/lib/tracker";
+import { RunPlan } from "@/lib/types";
 
 const TONES = {
   cyan:    { text: 'text-cyan-300',    bg: 'bg-cyan-400/10',    ring: 'ring-cyan-400/30',    glow: 'shadow-[0_0_24px_-6px_rgba(34,211,238,0.7)]',  line: 'from-cyan-400',    blob: 'bg-cyan-400/20',    dot: 'bg-cyan-400',    hover: 'hover:border-cyan-400/40' },

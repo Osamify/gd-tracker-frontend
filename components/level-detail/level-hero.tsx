@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Swords, Gauge, Award, Star, Hash, Trophy, Search, ArrowRight, Clock, X, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { RefreshButton } from '@/components/RefreshButton';
+import { RefreshButton } from '@/components/ui/RefreshButton';
 import { Face, AnimatedNumber } from './ui';
 import type { Tier, FaceDifficulty } from '@/lib/level-helpers';
 

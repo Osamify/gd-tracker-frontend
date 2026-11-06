@@ -1,7 +1,7 @@
 // components/level-details/best-runs-column.tsx
 import { Medal, Rocket, AlertTriangle, Flag } from 'lucide-react';
 import { Collapsible, RunRow } from './ui';
-import { type RunPlan, type Run } from '@/lib/tracker';
+import { type RunPlan, type Run } from '@/lib/types';
 import { runKey as getRunKey } from '@/lib/level-helpers';
 
 // Level colours. themeVars() on the page root sets them; if it is missing, the default palette is used.

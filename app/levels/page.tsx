@@ -28,6 +28,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
+import { Sidebar } from '@/components/layout/sidebar'
 
 /* ============================================================================
  *  GD TRACKER · /levels   (app/levels/page.tsx)
@@ -127,6 +128,8 @@ function useLevels() {
       if (!LEVELS_CACHE) setLoading(true) // with a cached list we refresh quietly
       setError(false)
       try {
+  await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds
+
         const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/Levels`, { signal: ctrl.signal })
         if (!res.ok) throw new Error('Failed to fetch')
 
@@ -1692,6 +1695,8 @@ export default function LevelsPage() {
   return (
     <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
       <style>{CSS}</style>
+
+      {/* <Sidebar /> */}
 
       {/* backdrop: faint blueprint grid + a lime haze in the corner */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">

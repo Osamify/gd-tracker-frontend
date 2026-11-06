@@ -60,36 +60,3 @@ export type RunPlan =
   | { complete: true; count: number; chain: Run[] }
   | { complete: false; count: number; chain: Run[]; gapAt: number }
 
-/**
- * Greedy interval cover: from the current reach, always pick the run that
- * starts at or before it and extends furthest. Yields the minimum number of
- * practice runs whose overlap stitches 0% to 100%.
- */
-export function minimumRunsToComplete(runs: Run[]): RunPlan {
-  // 👇 Updated to startPercent
-  const sorted = [...runs].sort((a, b) => a.startPercent - b.startPercent)
-  const chain: Run[] = []
-  let reach = 0
-  let i = 0
-
-  while (reach < 100) {
-    let best: Run | null = null
-    // 👇 Updated to startPercent / endPercent
-    while (i < sorted.length && sorted[i].startPercent <= reach) {
-      if (!best || sorted[i].endPercent > best.endPercent) best = sorted[i]
-      i++
-    }
-    if (!best || best.endPercent <= reach) {
-      return { complete: false, count: chain.length, chain, gapAt: reach }
-    }
-    chain.push(best)
-    reach = best.endPercent
-  }
-
-  return { complete: true, count: chain.length, chain }
-}
-
-// 👇 FIXED THE BUG HERE
-export function bestRun(runs: Run[]): number {
-  return runs.length > 0 ? Math.max(...runs.map((r) => r.endPercent)) : 0
-}

@@ -2,7 +2,7 @@ import { Crosshair, Route, AlertTriangle, Target } from 'lucide-react';
 import { GlowProgress } from '../ui/progress';
 import { AnimatedNumber } from './ui';
 import { panel } from '@/lib/level-helpers';
-import type { RunPlan } from '@/lib/tracker';
+import type { RunPlan } from '@/lib/types';
 import { type CSSProperties } from 'react';
 
 // Level colours. themeVars() on the page root sets them; if it is missing, the default palette is used.

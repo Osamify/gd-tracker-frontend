@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, useRef, useId, type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ListOrdered, ListChecks, Flame, Skull, Crosshair, ArrowUp, ArrowDown, X, Clock, ListFilter, Radar, Target, MousePointerClick, TrendingUp } from "lucide-react";
 import { Collapsible, RunRow } from "./ui";
-import type { Run } from "@/lib/tracker";
+import type { Run } from "@/lib/types";
 
 // Level colours. themeVars() on the page root sets them; if it is missing, the default palette is used.
 const A = 'var(--lv-a, #fde047)';

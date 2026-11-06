@@ -10,21 +10,22 @@
 // =====================================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { minimumRunsToComplete, type Level, type Run, DeathStat } from '@/lib/tracker'
+import {type Level, type Run, DeathStat } from '@/lib/types'
+import { minimumRunsToComplete } from '../../../lib/level-helpers'
 
 // Sub-components
-import PlanData from '@/components/level/plan-data'
-import LevelHero from '@/components/level/level-hero'
-import LevelBackground from '@/components/level/level-background'
-import LevelInfoSection from '@/components/level/level-metadata'
-import DangerZone from '@/components/level/danger-zone'
-import DeathDistribution from '@/components/level/death-distribution'
-import NewRunToast from '@/components/level/new-run-toast'
-import StatsRow from '@/components/level/stats-row'
-import ProgressCard from '@/components/level/progress-card'
-import ProgressOverTime from '@/components/level/progress-over-time'
-import AllRunsColumn from '@/components/level/all-runs-column'
-import BestRunsColumn from '@/components/level/best-runs-column'
+import PlanData from '@/components/level-detail/plan-data'
+import LevelHero from '@/components/level-detail/level-hero'
+import LevelBackground from '@/components/level-detail/level-background'
+import LevelInfoSection from '@/components/level-detail/level-metadata'
+import DangerZone from '@/components/level-detail/danger-zone'
+import DeathDistribution from '@/components/level-detail/death-distribution'
+import NewRunToast from '@/components/level-detail/new-run-toast'
+import StatsRow from '@/components/level-detail/stats-row'
+import ProgressCard from '@/components/level-detail/progress-card'
+import ProgressOverTime from '@/components/level-detail/progress-over-time'
+import AllRunsColumn from '@/components/level-detail/all-runs-column'
+import BestRunsColumn from '@/components/level-detail/best-runs-column'
 
 // Shared helpers
 import {

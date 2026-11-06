@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { TrendingUp } from 'lucide-react';
 import { panel, formatDate, runTime } from '../../lib/level-helpers';
-import type { Run } from '@/lib/tracker';
+import type { Run } from '@/lib/types';
 
 interface ProgressOverTimeProps {
   runs: Run[];

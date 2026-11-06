@@ -2,7 +2,7 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import LevelInfo from './LevelInfo'
-import type { Level, CombinedAttempts, DeathStat } from '@/lib/tracker'
+import type { Level, CombinedAttempts, DeathStat } from '@/lib/types'
 import Loader from '@/components/ui/loading'
 import { extractColorsFromImage } from '@/lib/server-colors'
 
@@ -48,7 +48,7 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
   // 👇 SAFE COLOR EXTRACTION
   let primary = '#8b5cf6'; // Default Purple
   let secondary = '#d946ef'; // Default Pink
-
+// throw new Error("Testing the error boundary!");
   try {
     const colors = await extractColorsFromImage(imageUrl);
     primary = colors.primary;
