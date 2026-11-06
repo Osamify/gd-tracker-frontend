@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import Link from 'next/link'
+import { Sidebar } from '@/components/layout/sidebar'
 import {
   AlertTriangle,
   ArrowRight,
   ArrowUp,
+  ArrowDownWideNarrow,
   ArrowUpDown,
+  ArrowUpNarrowWide,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -19,6 +22,7 @@ import {
   LayoutGrid,
   List,
   Play,
+  RefreshCw,
   RotateCcw,
   Search,
   Skull,
@@ -28,7 +32,6 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
-import { Sidebar } from '@/components/layout/sidebar'
 
 /* ============================================================================
  *  GD TRACKER · /levels   (app/levels/page.tsx)
@@ -37,6 +40,10 @@ import { Sidebar } from '@/components/layout/sidebar'
  *  marked "SPLIT →" with the file it can move to, using the folders you already
  *  have. To split: cut the section, paste it into the new file, add `export`
  *  in front of it, and import it back here. The code itself does not change.
+ *
+ *  PHASE 1 (data layer, do this first, then do the backend paging inside use-levels.ts): sections 1, 2, 3, 4
+ *  PHASE 2 (screen, any time later): sections 5 to 14
+ *  Every piece below also has its own  "► MOVE TO"  note, so nothing is left without a destination.
  *
  *  ORDER IN THIS FILE                     →  WHERE IT CAN GO
  *   1. Types                               →  lib/levels-types.ts
@@ -67,11 +74,14 @@ import { Sidebar } from '@/components/layout/sidebar'
 /*  Types                                                                     */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → lib/levels-types.ts (add `export` to each). The shapes of the data that /api/Levels sends.
+// SPLIT → lib/levels-types.ts [phase 1: data layer, split this first] (add `export` to each). The shapes of the data that /api/Levels sends.
 type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Insane' | 'Extreme'
+// ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 type Tier = 'rated' | 'featured' | 'epic' | 'legendary' | 'mythic'
+// ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 type Run = { startPercent: number; endPercent: number }
 
+// ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 type LevelItem = {
   id: number
   name: string
@@ -96,17 +106,19 @@ type LevelItem = {
   bestAt?: string | null
 }
 
+// ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard', 'Insane', 'Extreme']
+// ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 const TIERS: Tier[] = ['rated', 'featured', 'epic', 'legendary', 'mythic']
 
 /* -------------------------------------------------------------------------- */
 /*  Data Fetching                                                             */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → lib/use-levels.ts (put "use client" at its top).
+// SPLIT → lib/use-levels.ts (put "use client" at its top).   [phase 1: data layer, split this first]
 // useLevels(): loads the levels once and keeps them in LEVELS_CACHE, so coming Back from a level is instant.
 // It refreshes quietly in the background and merges the AREDL position/points into Extreme demons.
-// Returns { levels, loading, error, retry }.
+// Returns { levels, loading, error, updatedAt, refreshing, retry }.
 const AREDL_URL = 'https://api.aredl.net/v2/api/aredl/levels'
 
 /**
@@ -120,6 +132,8 @@ function useLevels() {
   const [loading, setLoading] = useState(() => !LEVELS_CACHE)
   const [error, setError] = useState(false)
   const [tries, setTries] = useState(0)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -127,9 +141,10 @@ function useLevels() {
     async function fetchLevels() {
       if (!LEVELS_CACHE) setLoading(true) // with a cached list we refresh quietly
       setError(false)
+      setRefreshing(true)
       try {
-  await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds
-
+        // TEMPORARY test delay, delete this line before shipping
+        await new Promise((resolve) => setTimeout(resolve, 3000))
         const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/Levels`, { signal: ctrl.signal })
         if (!res.ok) throw new Error('Failed to fetch')
 
@@ -175,6 +190,7 @@ function useLevels() {
         })
         LEVELS_CACHE = merged
         setLevels(merged)
+        setUpdatedAt(Date.now())
 
         // Extreme levels without AREDL values: ask AREDL directly (one request, matched by level id).
         // If this fails, the page still works, the AREDL chips just do not show.
@@ -207,7 +223,10 @@ function useLevels() {
           setError(true)
         }
       } finally {
-        if (!ctrl.signal.aborted) setLoading(false)
+        if (!ctrl.signal.aborted) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     }
 
@@ -215,14 +234,14 @@ function useLevels() {
     return () => ctrl.abort()
   }, [tries])
 
-  return { levels, loading, error, retry: () => setTries((n) => n + 1) }
+  return { levels, loading, error, updatedAt, refreshing, retry: () => setTries((n) => n + 1) }
 }
 
 /* -------------------------------------------------------------------------- */
 /*  Styling tables                                                            */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → lib/levels-config.ts.
+// SPLIT → lib/levels-config.ts.   [phase 2: screen, can wait]
 // Colours and labels per rating tier (rated/featured/epic/legendary/mythic) and per difficulty,
 // plus SORTS (the sort menu) and STATUSES (the All / In progress / Beaten / Not started tabs).
 const TIER_STYLE: Record<Tier, { label: string; chip: string; glow: string; ring: string }> = {
@@ -233,6 +252,7 @@ const TIER_STYLE: Record<Tier, { label: string; chip: string; glow: string; ring
   mythic: { label: 'Mythic', chip: 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300', glow: 'drop-shadow-[0_0_14px_rgba(34,211,238,0.7)]', ring: 'hover:border-cyan-400/50' },
 }
 
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const DIFF_STYLE: Record<Difficulty, { chip: string; hue: string }> = {
   Easy: { chip: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300', hue: 'from-emerald-500/40 to-slate-900' },
   Medium: { chip: 'border-yellow-400/40 bg-yellow-400/10 text-yellow-300', hue: 'from-yellow-500/40 to-slate-900' },
@@ -241,13 +261,16 @@ const DIFF_STYLE: Record<Difficulty, { chip: string; hue: string }> = {
   Extreme: { chip: 'border-red-500/40 bg-red-500/10 text-red-300', hue: 'from-red-600/40 to-slate-900' },
 }
 
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const DIFF_COLOR: Record<Difficulty, string> = { Easy: '#34d399', Medium: '#facc15', Hard: '#fb923c', Insane: '#f472b6', Extreme: '#ef4444' }
 
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const toTier = (rating: string): Tier => {
   const v = rating.toLowerCase()
   return (TIERS as string[]).includes(v) ? (v as Tier) : 'rated'
 }
 
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const SORTS = [
   { id: 'recent', label: 'Recently played' },
   { id: 'best', label: 'Best run' },
@@ -256,25 +279,30 @@ const SORTS = [
   { id: 'enjoyment', label: 'Enjoyment' },
   { id: 'name', label: 'Name A-Z' },
 ] as const
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 type SortId = (typeof SORTS)[number]['id']
 
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const STATUSES = [
   { id: 'all', label: 'All' },
   { id: 'progress', label: 'In progress' },
   { id: 'beaten', label: 'Beaten' },
   { id: 'fresh', label: 'Not started' },
 ] as const
+// ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 type StatusId = (typeof STATUSES)[number]['id']
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → lib/level-helpers.ts (you already have this file: merge it in, do not duplicate).
+// SPLIT → lib/level-helpers.ts (you already have this file: merge it in, do not duplicate).   [phase 1: data layer, split this first]
 // Pure functions with no React: is it beaten, the "hardest" ordering, durations, "x min ago", the status label.
 const isBeaten = (l: LevelItem) => l.progress >= 100 || Boolean(l.dateCompleted)
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 const isFresh = (l: LevelItem) => l.progress === 0 && l.runs.length === 0
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 /** GDDP tier always with two decimals: 19.22 */
 const fmtTier = (n: number) => n.toFixed(2)
 
@@ -284,6 +312,7 @@ const fmtTier = (n: number) => n.toFixed(2)
  *  2. inside Extreme, the AREDL position (#1 is the hardest; levels not on the list come after)
  *  3. otherwise (or on a tie) the GDDP tier, higher = harder
  */
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 function hardest(a: LevelItem, b: LevelItem) {
   const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
   if (d) return d
@@ -294,6 +323,7 @@ function hardest(a: LevelItem, b: LevelItem) {
   return (b.gddpTier ?? 0) - (a.gddpTier ?? 0) || a.name.localeCompare(b.name)
 }
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 function formatDuration(s: number) {
   const t = Math.max(0, Math.round(s))
   const m = Math.floor(t / 60)
@@ -301,6 +331,7 @@ function formatDuration(s: number) {
   return m === 0 ? `${r}s` : r === 0 ? `${m}m` : `${m}m ${r}s`
 }
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 /** Needs `now` so it only appears after mount (server and browser always agree). */
 function relativeTime(iso: string | null, now: number | null) {
   if (!iso) return 'Never played'
@@ -314,13 +345,17 @@ function relativeTime(iso: string | null, now: number | null) {
   return rtf.format(Math.round(diff / 86400), 'day')
 }
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 const isLive = (iso: string | null, now: number | null) => Boolean(iso && now != null && now - new Date(iso).getTime() < 10 * 60_000 && now >= new Date(iso).getTime())
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 const dateFmt = (iso: string | null, now: number | null) =>
   iso && now != null ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 type Status = { kind: 'beaten' | 'best' | 'progress' | 'fresh'; label: string; sub?: string }
 
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 function statusOf(l: LevelItem, now: number | null): Status {
   if (isBeaten(l)) return { kind: 'beaten', label: 'Beaten', sub: dateFmt(l.dateCompleted ?? l.lastPlayedAt, now) }
   if (isFresh(l)) return { kind: 'fresh', label: 'Not started' }
@@ -330,7 +365,7 @@ function statusOf(l: LevelItem, now: number | null): Status {
   return { kind: 'progress', label: 'In progress' }
 }
 
-// SPLIT → components/ui/num.tsx. <Num/> shows a number that counts up from 0 when it appears (hero stats, rings).
+// SPLIT → components/ui/num.tsx. <Num/> shows a number that counts up from 0 when it appears (hero stats, rings).   [phase 2: screen, can wait]
 function useCountUp(target: number, duration = 900) {
   const [value, setValue] = useState(0)
   const from = useRef(0)
@@ -356,6 +391,7 @@ function useCountUp(target: number, duration = 900) {
   return value
 }
 
+// ► MOVE TO components/ui/num.tsx (same file as useCountUp)  [phase 2: screen, can wait]
 function Num({ value, decimals = 0, suffix = '' }: { value: number; decimals?: number; suffix?: string }) {
   const v = useCountUp(value)
   return (
@@ -366,13 +402,15 @@ function Num({ value, decimals = 0, suffix = '' }: { value: number; decimals?: n
   )
 }
 
-// SPLIT → lib/levels-config.ts.
+// SPLIT → lib/levels-config.ts.   [phase 2: screen, can wait]
 // BRAND = the lime accent of the page, GREEN = hover/progress colour on cards.
 // CSS = all the animations (rise-in, skeleton wave, tilt, ...). You can move that text to app/globals.css and delete the <style> tag.
 const BRAND = '#d4ff3a'
+// ► MOVE TO lib/levels-config.ts  [phase 2: screen, can wait]
 /** Hover glow, borders and progress on the level cards and rows. */
 const GREEN = '#34d399'
 
+// ► MOVE TO app/globals.css (or keep in lib/levels-config.ts)  [phase 2: screen, can wait]
 const CSS = `
 @keyframes gl-rise { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
 @keyframes gl-grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
@@ -403,10 +441,11 @@ html::-webkit-scrollbar-thumb:hover { filter: brightness(1.15) }
 /*  Small pieces                                                              */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → components/level/cut.tsx. <Cut/> is the panel with angled corners used by the stats, the ladder and the banner.
+// SPLIT → components/level/cut.tsx. <Cut/> is the panel with angled corners used by the stats, the ladder and the banner.   [phase 2: screen, can wait]
 /** Panel with cut (angled) corners and a 1px border. The border colour is the CSS variable --bd, so hover can change it. */
 const poly = (c: number) => `polygon(${c}px 0, 100% 0, 100% calc(100% - ${c}px), calc(100% - ${c}px) 100%, 0 100%, 0 ${c}px)`
 
+// ► MOVE TO components/level/cut.tsx (same file as poly)  [phase 2: screen, can wait]
 function Cut({ c = 14, bd = 'rgba(255,255,255,.1)', bg = '#0d1013', className = '', inner = '', children }: { c?: number; bd?: string; bg?: string; className?: string; inner?: string; children: ReactNode }) {
   return (
     <div className={`relative ${className}`} style={{ clipPath: poly(c), background: `var(--bd, ${bd})`, padding: 1 }}>
@@ -417,7 +456,7 @@ function Cut({ c = 14, bd = 'rgba(255,255,255,.1)', bg = '#0d1013', className = 
   )
 }
 
-// SPLIT → components/level/face.tsx (Face + Thumb).
+// SPLIT → components/level/face.tsx (Face + Thumb).   [phase 2: screen, can wait]
 // Face = the demon face image (falls back to the "rated" one if a file is missing). Thumb = the level thumbnail with a coloured fallback.
 /** /gdfaces/<difficulty>-<tier>.png, falling back to <difficulty>-rated.png if that file is missing. */
 function Face({ difficulty, tier, className }: { difficulty: Difficulty; tier: Tier; className?: string }) {
@@ -429,9 +468,10 @@ function Face({ difficulty, tier, className }: { difficulty: Difficulty; tier: T
   return <img src={`/gdfaces/${d}-${stage === 0 ? tier : 'rated'}.png`} alt={`${difficulty} ${tier}`} className={className} onError={() => setStage((n) => n + 1)} />
 }
 
+// ► MOVE TO components/level/face.tsx (same file as Face)  [phase 2: screen, can wait]
 function Thumb({ level, className }: { level: LevelItem; className?: string }) {
   const [failed, setFailed] = useState(false)
-  
+
   // 👇 THE FALLBACK: If the difficulty isn't found, use 'Easy'
   const style = DIFF_STYLE[level.demonDifficulty] || DIFF_STYLE['Easy'];
 
@@ -452,6 +492,7 @@ function Thumb({ level, className }: { level: LevelItem; className?: string }) {
 }
 
 
+// ► MOVE TO lib/levels-config.ts  [phase 2: screen, can wait]
 const TIER_ACCENT: Record<Tier, string> = {
   rated: '#94a3b8',
   featured: '#facc15',
@@ -459,9 +500,11 @@ const TIER_ACCENT: Record<Tier, string> = {
   legendary: '#f472b6',
   mythic: '#22d3ee',
 }
+// ► MOVE TO lib/levels-config.ts  [phase 2: screen, can wait]
 /** The card colour is the rating (rated, featured, ...). "Cleared" is shown by the status tag and a lime border. */
 const accentOf = (l: LevelItem) => TIER_ACCENT[toTier(l.rating)]
 
+// ► MOVE TO lib/levels-config.ts  [phase 2: screen, can wait]
 const percentStyle = (accent: string): CSSProperties => ({
   backgroundImage: `linear-gradient(to bottom, #ffffff 15%, ${accent})`,
   WebkitBackgroundClip: 'text',
@@ -469,7 +512,7 @@ const percentStyle = (accent: string): CSSProperties => ({
   color: 'transparent',
 })
 
-// SPLIT → components/level/card-parts.tsx (HoverGlow, TickBar, Medal, RankBadge, AredlBadge, StatusBadge, RatingChips, PlayingTag, Cell).
+// SPLIT → components/level/card-parts.tsx (HoverGlow, TickBar, Medal, RankBadge, AredlBadge, StatusBadge, RatingChips, PlayingTag, Cell).   [phase 2: screen, can wait]
 // Small decorations used inside the cards and rows: the top-10 medals, the AREDL number badge, the status tag, the GDDP chip.
 function HoverGlow({ accent }: { accent: string }) {
   return (
@@ -481,6 +524,7 @@ function HoverGlow({ accent }: { accent: string }) {
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 /** Progress as a row of slanted ticks, filled ticks get brighter towards the end. */
 function TickBar({ value, accent, n = 25, delay = 0, className = 'h-2.5' }: { value: number; accent: string; n?: number; delay?: number; className?: string }) {
   const v = Math.min(100, Math.max(0, value))
@@ -506,6 +550,7 @@ function TickBar({ value, accent, n = 25, delay = 0, className = 'h-2.5' }: { va
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx (CLIP, SIZE_ROW, SIZE_CARD, Medal, RankBadge go together)  [phase 2: screen, can wait]
 /** Every top-10 place has its own colour AND its own shape, so #2 never looks like #9. */
 const CLIP = {
   shield: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)',
@@ -534,6 +579,7 @@ const TOP10: { a: string; b: string; c: string; shape: keyof typeof CLIP }[] = [
 const SIZE_ROW = [52, 50, 48, 44, 44, 44, 42, 42, 42, 42]
 const SIZE_CARD = [38, 36, 34, 32, 32, 32, 30, 30, 30, 30]
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 function Medal({ rank, size }: { rank: number; size: number }) {
   const t = TOP10[rank - 1]
   const clip = CLIP[t.shape]
@@ -567,6 +613,7 @@ function Medal({ rank, size }: { rank: number; size: number }) {
 }
 
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 function RankBadge({ rank, variant }: { rank: number; variant: 'card' | 'row' }) {
   const title = `Number ${rank} in this list`
   if (rank <= 10) {
@@ -595,6 +642,7 @@ function RankBadge({ rank, variant }: { rank: number; variant: 'card' | 'row' })
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 /** The AREDL position, drawn like the in-game mod: a dark red-brown rounded square with the number, next to the demon face. */
 function AredlBadge({ level, size = 'md', className = '' }: { level: LevelItem; size?: 'sm' | 'md'; className?: string }) {
   if (level.demonDifficulty !== 'Extreme' || level.aredlRank == null) return null
@@ -616,6 +664,7 @@ function AredlBadge({ level, size = 'md', className = '' }: { level: LevelItem; 
 }
 
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 function StatusBadge({ st }: { st: Status }) {
   const map = {
     beaten: { cls: 'text-[#0b0d00]', bg: BRAND, icon: <Trophy className="size-3" />, label: 'Cleared' },
@@ -636,6 +685,7 @@ function StatusBadge({ st }: { st: Status }) {
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 /** GDDP tier with two decimals. (The AREDL position is the badge next to the face.) */
 function RatingChips({ level }: { level: LevelItem }) {
   if (level.gddpTier == null) return null
@@ -647,6 +697,7 @@ function RatingChips({ level }: { level: LevelItem }) {
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 function PlayingTag() {
   return (
     <span className="inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] backdrop-blur-md" style={{ borderColor: `${BRAND}80`, color: BRAND, background: 'rgba(0,0,0,.6)' }}>
@@ -656,7 +707,7 @@ function PlayingTag() {
   )
 }
 
-// SPLIT → components/ui/logo.tsx (export it, then use it anywhere: header, slim bar, 404 page, emails).
+// SPLIT → components/ui/logo.tsx (export it, then use it anywhere: header, slim bar, 404 page, emails).   [phase 2: screen, can wait]
 // The GD monogram with a row of progress ticks under it (so the mark itself says "tracker"). Plain SVG: sharp at any size, no image file.
 // Change the colours with the three values below (tile, letter G, letter D).
 function Logo({ className = 'size-10' }: { className?: string }) {
@@ -681,6 +732,7 @@ function Logo({ className = 'size-10' }: { className?: string }) {
   )
 }
 
+// ► MOVE TO components/level/card-parts.tsx  [phase 2: screen, can wait]
 function Cell({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0 border-l border-white/[0.08] pl-3 first:border-l-0 first:pl-0">
@@ -690,10 +742,28 @@ function Cell({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-// SPLIT → components/tracker/levels-card.tsx.
+// SPLIT → components/levels/highlight.tsx.   [phase 2: screen, can wait]
+// Wraps the part of a name/creator that matches the search in a lime mark.
+function Highlight({ text, q }: { text: string; q: string }) {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return <>{text}</>
+  const at = text.toLowerCase().indexOf(needle)
+  if (at < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="bg-transparent" style={{ color: BRAND, textShadow: `0 0 12px ${BRAND}66` }}>
+        {text.slice(at, at + needle.length)}
+      </mark>
+      {text.slice(at + needle.length)}
+    </>
+  )
+}
+
+// SPLIT → components/tracker/levels-card.tsx.   [phase 2: screen, can wait]
 // The big full-art card of the grid view: art, rank, status, GDDP tier, percent, progress bar, 3D tilt on hover.
 // (components/tracker/level-card.tsx already exists, so give this one another name.)
-function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
+function LevelCard({ level, now, index, rank, q = '' }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -770,10 +840,10 @@ function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number 
               className="line-clamp-2 font-heading text-2xl font-extrabold leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] transition-colors duration-300 group-hover:[color:var(--c)]"
               style={{ '--c': GREEN } as CSSProperties}
             >
-              {level.name}
+              <Highlight text={level.name} q={q} />
             </h3>
             <p className="truncate text-sm text-slate-200 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
-              by <span className="font-semibold text-white">{level.creator}</span>
+              by <span className="font-semibold text-white"><Highlight text={level.creator} q={q} /></span>
             </p>
           </div>
 
@@ -812,8 +882,8 @@ function LevelCard({ level, now, index, rank }: { level: LevelItem; now: number 
   )
 }
 
-// SPLIT → components/tracker/levels-row.tsx. The list-view version of the card (one row per level).
-function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number | null; index: number; rank: number }) {
+// SPLIT → components/tracker/levels-row.tsx. The list-view version of the card (one row per level).   [phase 2: screen, can wait]
+function LevelRow({ level, now, index, rank, q = '' }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -847,11 +917,11 @@ function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number |
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="truncate font-heading text-base font-black uppercase tracking-tight text-white transition-colors duration-300 group-hover:[color:var(--ac)] sm:text-lg">{level.name}</h3>
+                <h3 className="truncate font-heading text-base font-black uppercase tracking-tight text-white transition-colors duration-300 group-hover:[color:var(--ac)] sm:text-lg"><Highlight text={level.name} q={q} /></h3>
                 {live && <PlayingTag />}
               </div>
               <p className="truncate font-mono text-[11px] text-slate-500">
-                by <span className="font-bold text-slate-300">{level.creator}</span>
+                by <span className="font-bold text-slate-300"><Highlight text={level.creator} q={q} /></span>
                 <span suppressHydrationWarning>{relativeTime(level.lastPlayedAt, now) ? ` · ${relativeTime(level.lastPlayedAt, now)}` : ''}</span>
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -906,7 +976,7 @@ function LevelRow({ level, now, index, rank }: { level: LevelItem; now: number |
 /*  Loading placeholders                                                      */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → components/tracker/levels-skeleton.tsx (SkeletonCard + SkeletonRow).
+// SPLIT → components/tracker/levels-skeleton.tsx (SkeletonCard + SkeletonRow).   [phase 2: screen, can wait]
 // Placeholders with the same shape as the cards; the "wave" runs from left to right while the data loads.
 function SkeletonCard({ index }: { index: number }) {
   return (
@@ -935,6 +1005,7 @@ function SkeletonCard({ index }: { index: number }) {
   )
 }
 
+// ► MOVE TO components/tracker/levels-skeleton.tsx  [phase 2: screen, can wait]
 function SkeletonRow({ index }: { index: number }) {
   return (
     <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 8) * 50}ms`, '--d': `${index * 0.12}s` } as CSSProperties}>
@@ -965,10 +1036,10 @@ function SkeletonRow({ index }: { index: number }) {
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
 
-// SPLIT → lib/levels-state.ts (together with SavedState, readSavedState and readLocal further down).
+// SPLIT → lib/levels-state.ts (together with SavedState, readSavedState and readLocal further down).   [phase 2: screen, can wait]
 // sessionStorage key where the page remembers filters, page and scroll position, so Back from a level lands in the same place.
 const SAVE_KEY = 'gd-levels-state-v1' // sessionStorage: where you were in the list
-// SPLIT → components/tracker/target-banner.tsx (ProgressRing + TargetBanner).
+// SPLIT → components/tracker/target-banner.tsx (ProgressRing + TargetBanner).   [phase 2: screen, can wait]
 // The "Target lock" banner: the hardest level you have not beaten yet (rated + tracked) with a rotating reticle and a progress ring.
 /** Round progress meter with a count-up number. */
 function ProgressRing({ value, size = 112 }: { value: number; size?: number }) {
@@ -999,6 +1070,7 @@ function ProgressRing({ value, size = 112 }: { value: number; size?: number }) {
   )
 }
 
+// ► MOVE TO components/tracker/target-banner.tsx  [phase 2: screen, can wait]
 /** The big banner at the top: your hardest unbeaten level, with a rotating target reticle around the face. */
 function TargetBanner({ level, now, onNavigate }: { level: LevelItem; now: number | null; onNavigate: () => void }) {
   const tier = toTier(level.rating)
@@ -1071,11 +1143,13 @@ function TargetBanner({ level, now, onNavigate }: { level: LevelItem; now: numbe
   )
 }
 
-// SPLIT → components/ui/pager.tsx (PER_PAGE_OPTIONS, DEFAULT_PER_PAGE, pageList, Pager, MiniPager).
+// SPLIT → components/ui/pager.tsx (PER_PAGE_OPTIONS, DEFAULT_PER_PAGE, pageList, Pager, MiniPager).   [phase 2: screen, can wait]
 // Pager = the bar at the bottom (page numbers, go to, per page).  MiniPager = the "‹ 3 / 10 ›" box in the slim bar (type a number to jump).
 const PER_PAGE_OPTIONS = [9, 15, 30, 60, 99] // cards per page you can choose
+// ► MOVE TO components/ui/pager.tsx  [phase 2: screen, can wait]
 const DEFAULT_PER_PAGE = 15
 
+// ► MOVE TO components/ui/pager.tsx  [phase 2: screen, can wait]
 /** 1 … 4 5 6 … 20 : first, last, and the pages around the current one. */
 function pageList(page: number, pages: number): (number | '…')[] {
   if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1)
@@ -1091,6 +1165,7 @@ function pageList(page: number, pages: number): (number | '…')[] {
   return out
 }
 
+// ► MOVE TO components/ui/pager.tsx  [phase 2: screen, can wait]
 function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }: { page: number; pages: number; total: number; from: number; to: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void }) {
   const pad = (n: number) => String(n).padStart(3, '0')
   const [jump, setJump] = useState('')
@@ -1234,6 +1309,7 @@ function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }: { p
   )
 }
 
+// ► MOVE TO components/ui/pager.tsx  [phase 2: screen, can wait]
 /** Tiny "‹ 3 / 10 ›" control for the slim bar. */
 function MiniPager({ page, pages, onPage, tabbable, className = '' }: { page: number; pages: number; onPage: (p: number) => void; tabbable: boolean; className?: string }) {
   const btn = 'grid size-9 place-items-center text-slate-300 transition hover:text-white disabled:pointer-events-none disabled:opacity-30'
@@ -1291,13 +1367,14 @@ function MiniPager({ page, pages, onPage, tabbable, className = '' }: { page: nu
   )
 }
 
-// SPLIT → lib/levels-state.ts. What is stored in sessionStorage (filters, page, scroll) and how it is read back safely.
+// SPLIT → lib/levels-state.ts. What is stored in sessionStorage (filters, page, scroll) and how it is read back safely.   [phase 2: screen, can wait]
 type SavedState = { page?: number; perPage?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
 
 /**
  * Only used when you come Back inside the app (the levels are cached, so this render is not a hydration).
  * On a full page load the server and the browser must start from the same state, so that case is restored later, in an effect.
  */
+// ► MOVE TO lib/levels-state.ts  [phase 2: screen, can wait]
 function readSavedState(): SavedState | null {
   if (!LEVELS_CACHE) return null
   try {
@@ -1306,6 +1383,7 @@ function readSavedState(): SavedState | null {
     return null
   }
 }
+// ► MOVE TO lib/levels-state.ts  [phase 2: screen, can wait]
 function readLocal<T extends string>(key: string, ok: (v: string) => boolean, fallback: T): T {
   if (!LEVELS_CACHE) return fallback
   try {
@@ -1324,10 +1402,10 @@ function readLocal<T extends string>(key: string, ok: (v: string) => boolean, fa
  *   4. SCREEN (JSX) .... masthead, stats, target banner, ladder, filter bar, cards, pager, slim bar
  * ---------------------------------------------------------------------------- */
 export default function LevelsPage() {
-  const { levels, loading, error, retry } = useLevels()
+  const { levels, loading, error, updatedAt, refreshing, retry } = useLevels()
 
-    // ── 1. STATE ─────────────────────────────────────────────────────────────
-    // `init` is what was saved when you opened a level; it is used so that Back puts everything where you left it.
+  // ── 1. STATE ─────────────────────────────────────────────────────────────
+  // `init` is what was saved when you opened a level; it is used so that Back puts everything where you left it.
   const [init] = useState(readSavedState)
   // Back inside the app: the page stays invisible for a split second until it has been scrolled to your old spot (no jump from the top)
   const [revealed, setRevealed] = useState(!init)
@@ -1335,6 +1413,8 @@ export default function LevelsPage() {
   const [diffs, setDiffs] = useState<Difficulty[]>(() => (init?.diffs ?? []).filter((d) => (DIFFICULTIES as string[]).includes(d)) as Difficulty[])
   const [status, setStatus] = useState<StatusId>(STATUSES.some((x) => x.id === init?.status) ? (init!.status as StatusId) : 'beaten')
   const [sort, setSort] = useState<SortId>(() => readLocal('gd-levels-sort-v2', (v) => SORTS.some((x) => x.id === v), 'difficulty') as SortId)
+  // flipped = the opposite direction of the sort (Hardest first -> Easiest first). Saved in the browser.
+  const [flipped, setFlipped] = useState<boolean>(() => (readLocal('gd-levels-flip', (v) => v === '1' || v === '0', '0') as string) === '1')
   const [view, setView] = useState<'grid' | 'list'>(() => readLocal('gd-levels-view', (v) => v === 'grid' || v === 'list', 'grid') as 'grid' | 'list')
   const [page, setPage] = useState(init && Number.isFinite(init.page) ? Math.max(1, init.page!) : 1)
   const [perPage, setPerPage] = useState<number>(() => {
@@ -1386,6 +1466,7 @@ export default function LevelsPage() {
     try {
       const s = localStorage.getItem('gd-levels-sort-v2') as SortId | null
       const v = localStorage.getItem('gd-levels-view') as 'grid' | 'list' | null
+      setFlipped(localStorage.getItem('gd-levels-flip') === '1')
       if (s && SORTS.some((x) => x.id === s)) setSort(s)
       if (v === 'grid' || v === 'list') setView(v)
       const pp = Number(localStorage.getItem('gd-levels-perpage'))
@@ -1396,9 +1477,10 @@ export default function LevelsPage() {
     try {
       localStorage.setItem('gd-levels-sort-v2', sort)
       localStorage.setItem('gd-levels-view', view)
+      localStorage.setItem('gd-levels-flip', flipped ? '1' : '0')
       localStorage.setItem('gd-levels-perpage', String(perPage))
     } catch { }
-  }, [sort, view, perPage])
+  }, [sort, view, perPage, flipped])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1406,8 +1488,8 @@ export default function LevelsPage() {
       const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
       if (e.key === '/' && !typing) {
         e.preventDefault()
-        // when the slim bar is showing (scrolled down), search there
-        ;(showJumpRef.current ? miniRef.current : searchRef.current)?.focus()
+          // when the slim bar is showing (scrolled down), search there
+          ; (showJumpRef.current ? miniRef.current : searchRef.current)?.focus()
       }
       if (e.key === 'Escape' && el === searchRef.current) {
         updateQuery('')
@@ -1442,11 +1524,12 @@ export default function LevelsPage() {
     }
   }, [])
 
-    // ── 2. EFFECTS ───────────────────────────────────────────────────────────
+  // ── 2. EFFECTS ───────────────────────────────────────────────────────────
   // ---- remember where you were (filters, how many cards are loaded, scroll), so Back from a level lands in the same place ----
   const stateRef = useRef({ page: 1, perPage: DEFAULT_PER_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId })
   stateRef.current = { page, perPage, query, diffs, status }
   const restoreRef = useRef<{ scrollY: number } | null>(init ? { scrollY: Number(init.scrollY) || 0 } : null)
+  // ► CAN BECOME A HOOK: lib/use-levels-restore.ts → useRestorePosition()  (save/restore filters, page and scroll)  [phase 2: screen, can wait]
   const persist = useCallback(() => {
     try {
       sessionStorage.setItem(SAVE_KEY, JSON.stringify({ ...stateRef.current, saved: savedStatus.current, scrollY: window.scrollY }))
@@ -1481,7 +1564,7 @@ export default function LevelsPage() {
     const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
     if (window.scrollY > top + slack) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }, [])
-  const filterKey = JSON.stringify([query, diffs, status, sort])
+  const filterKey = JSON.stringify([query, diffs, status, sort, flipped])
   const lastKey = useRef(filterKey)
   useEffect(() => {
     if (restoreRef.current) {
@@ -1569,9 +1652,11 @@ export default function LevelsPage() {
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
 
-    // ── 3. DERIVED DATA ──────────────────────────────────────────────────────
-    // Nothing below is stored: it is recalculated from the state whenever it changes.
-    // filtered = search + status + difficulty, then sorted by the chosen sort.
+  // ── 3. DERIVED DATA ──────────────────────────────────────────────────────
+  // Nothing below is stored: it is recalculated from the state whenever it changes.
+  // filtered = search + status + difficulty, then sorted by the chosen sort.
+  // ► BACKEND PAGING: this block (search + status + difficulty + sort) is what the SERVER takes over.
+  // ► CAN BECOME A HOOK: lib/use-level-filters.ts → useLevelFilters(levels, filters)  [phase 1: data layer, split this first]
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const out = levels.filter((l) => {
@@ -1591,10 +1676,13 @@ export default function LevelsPage() {
       enjoyment: (a, b) => (b.enjoyment ?? -1) - (a.enjoyment ?? -1),
       name: (a, b) => a.name.localeCompare(b.name),
     }
-    return [...out].sort(cmp[sort])
-  }, [levels, query, diffs, status, sort])
+    const sorted = [...out].sort(cmp[sort])
+    return flipped ? sorted.reverse() : sorted
+  }, [levels, query, diffs, status, sort, flipped])
 
-    // numbers for the hero: total, beaten, in progress, attempts, average best run
+  // numbers for the hero: total, beaten, in progress, attempts, average best run
+  // ► BACKEND PAGING: stats, counts, resume (target) and ladder need EVERY level → they move to a small "summary" endpoint.
+  // ► MOVE TO lib/level-stats.ts as plain functions  [phase 1: data layer, split this first]
   const stats = useMemo(() => {
     const beaten = levels.filter(isBeaten).length
     const inProgress = levels.filter((l) => !isBeaten(l) && !isFresh(l)).length
@@ -1646,6 +1734,8 @@ export default function LevelsPage() {
     setStatus('all')
   }
 
+  // ► BACKEND PAGING: pages / curPage / shown come from the server (total + the items of this page) instead of slicing here.
+  // ► CAN BECOME A HOOK: lib/use-paging.ts → usePaging(total)  [phase 2: screen, can wait]
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
   const curPage = Math.min(page, pages)
   const pageStart = (curPage - 1) * perPage
@@ -1695,7 +1785,6 @@ export default function LevelsPage() {
   return (
     <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
       <style>{CSS}</style>
-
       {/* <Sidebar /> */}
 
       {/* backdrop: faint blueprint grid + a lime haze in the corner */}
@@ -1828,6 +1917,18 @@ export default function LevelsPage() {
               )}
             </div>
 
+            {/* direction: flips the sort (hardest first / easiest first) */}
+            <button
+              tabIndex={showJump ? 0 : -1}
+              onClick={() => setFlipped((f) => !f)}
+              aria-label={flipped ? 'Sort direction: reversed. Click for normal' : 'Sort direction: normal. Click to reverse'}
+              aria-pressed={flipped}
+              title={flipped ? 'Reversed' : 'Normal'}
+              className="grid size-9 shrink-0 place-items-center border border-white/10 bg-black/40 text-slate-300 transition hover:border-white/25 hover:text-white"
+            >
+              {flipped ? <ArrowUpNarrowWide className="size-4" style={{ color: BRAND }} /> : <ArrowDownWideNarrow className="size-4" />}
+            </button>
+
             {/* sort (Hardest, Recent, ...) */}
             <div ref={miniSortRef} className="sm:relative">
               <button
@@ -1889,28 +1990,28 @@ export default function LevelsPage() {
 
           {/* phones: the status tabs get their own scrolling row (the wide layout shows them in the bar above) */}
           <div className="flex items-stretch border-t border-white/[0.06] md:hidden">
-          <div className="flex min-w-0 flex-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {STATUSES.map((st) => {
-              const active = status === st.id
-              return (
-                <button
-                  key={st.id}
-                  tabIndex={showJump ? 0 : -1}
-                  onClick={() => {
-                    savedStatus.current = null
-                    setStatus(st.id)
-                  }}
-                  aria-pressed={active}
-                  className={`relative shrink-0 px-3.5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] transition ${active ? 'text-white' : 'text-slate-500'}`}
-                >
-                  {st.label}
-                  <sup className="ml-1 tabular-nums" style={{ color: active ? BRAND : undefined }}>{counts.s[st.id]}</sup>
-                  {active && <span className="absolute inset-x-2 bottom-0 h-0.5" style={{ background: BRAND }} />}
-                </button>
-              )
-            })}
-          </div>
-          {pages > 1 && <MiniPager page={curPage} pages={pages} onPage={flipPage} tabbable={showJump} className="flex shrink-0 border-y-0 border-r-0" />}
+            <div className="flex min-w-0 flex-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {STATUSES.map((st) => {
+                const active = status === st.id
+                return (
+                  <button
+                    key={st.id}
+                    tabIndex={showJump ? 0 : -1}
+                    onClick={() => {
+                      savedStatus.current = null
+                      setStatus(st.id)
+                    }}
+                    aria-pressed={active}
+                    className={`relative shrink-0 px-3.5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] transition ${active ? 'text-white' : 'text-slate-500'}`}
+                  >
+                    {st.label}
+                    <sup className="ml-1 tabular-nums" style={{ color: active ? BRAND : undefined }}>{counts.s[st.id]}</sup>
+                    {active && <span className="absolute inset-x-2 bottom-0 h-0.5" style={{ background: BRAND }} />}
+                  </button>
+                )
+              })}
+            </div>
+            {pages > 1 && <MiniPager page={curPage} pages={pages} onPage={flipPage} tabbable={showJump} className="flex shrink-0 border-y-0 border-r-0" />}
           </div>
         </div>
       </div>
@@ -1922,23 +2023,30 @@ export default function LevelsPage() {
             <div className="flex items-center gap-4 sm:gap-6">
               <Logo className="size-16 shrink-0 sm:size-20 xl:size-24" />
               <div>
-              <div className={`${mono} mb-3 flex items-center gap-2 !tracking-[0.35em] text-slate-500`}>
-                <span className="size-1.5" style={{ background: BRAND }} />
-                Practice log
-                <span className="text-slate-700">//</span>
-                Demon levels
-              </div>
-              {/* the logo already says "GD", so the title is just "Tracker" (the tab title is still "GD Tracker") */}
-              <h1 className="font-heading text-5xl font-black uppercase leading-[0.9] tracking-tighter sm:text-6xl xl:text-7xl" aria-label="GD Tracker">
-                <span className="sr-only">GD </span>
-                <span style={{ WebkitTextStroke: `1.5px ${BRAND}`, color: 'transparent' }}>Tracker</span>
-              </h1>
+                <div className={`${mono} mb-3 flex items-center gap-2 !tracking-[0.35em] text-slate-500`}>
+                  <span className="size-1.5" style={{ background: BRAND }} />
+                  Practice log
+                  <span className="text-slate-700">//</span>
+                  Demon levels
+                </div>
+                {/* the logo already says "GD", so the title is just "Tracker" (the tab title is still "GD Tracker") */}
+                <h1 className="font-heading text-5xl font-black uppercase leading-[0.9] tracking-tighter sm:text-6xl xl:text-7xl" aria-label="GD Tracker">
+                  <span className="sr-only">GD </span>
+                  <span style={{ WebkitTextStroke: `1.5px ${BRAND}`, color: 'transparent' }}>Tracker</span>
+                </h1>
               </div>
             </div>
-            <div className={`${mono} flex items-center gap-2 border border-white/10 bg-black/30 px-3 py-2`} style={{ color: BRAND }}>
-              <span className="size-2 animate-pulse" style={{ background: BRAND }} />
-              Auto-tracking
-            </div>
+            {/* "Updated 2 min ago" + a refresh button (asks the backend again, the list updates in place) */}
+            <button
+              onClick={retry}
+              disabled={refreshing}
+              aria-label="Refresh levels"
+              className={`${mono} group flex items-center gap-2 border border-white/10 bg-black/30 px-3 py-2 transition hover:border-white/25 disabled:cursor-wait`}
+              style={{ color: BRAND }}
+            >
+              <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : 'transition group-hover:rotate-180'}`} />
+              <span suppressHydrationWarning>{refreshing ? 'Updating' : updatedAt ? `Updated ${relativeTime(new Date(updatedAt).toISOString(), now)}` : 'Auto-tracking'}</span>
+            </button>
           </div>
 
           {/* ruler */}
@@ -2008,44 +2116,44 @@ export default function LevelsPage() {
           <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} className="gl-fill block h-16 min-w-[128px] flex-1" style={{ '--d': `${i * 0.18}s`, clipPath: 'polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%)' } as CSSProperties} />
-                ))
+                <span key={i} className="gl-fill block h-16 min-w-[128px] flex-1" style={{ '--d': `${i * 0.18}s`, clipPath: 'polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%)' } as CSSProperties} />
+              ))
               : ladder.map(({ d, total, beaten }) => {
-                  const c = DIFF_COLOR[d]
-                  const on = diffs.includes(d)
-                  const pct = total ? (beaten / total) * 100 : 0
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => setDiffs((x) => toggle(x, d))}
-                      aria-pressed={on}
-                      title={on ? `Showing ${d} only. Click to remove.` : `Show only ${d}`}
-                      className="relative h-16 shrink-0 text-left transition-opacity duration-200 hover:!opacity-100"
-                      style={{
-                        flex: `${Math.max(total, 1)} 1 0`,
-                        minWidth: 128,
-                        background: 'rgba(255,255,255,.045)',
-                        opacity: diffs.length && !on ? 0.5 : 1,
-                        clipPath: 'polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%)',
-                      }}
-                    >
-                      <span className="absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(135deg, ${c}22 0 2px, transparent 2px 8px)` }} />
-                      <span className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c}55, ${c}30)` }} />
-                      <span className="absolute bottom-0 left-0 h-[3px]" style={{ width: `${pct}%`, background: c }} />
-                      {on && <span className="absolute inset-x-0 top-0 h-[3px] bg-white" />}
-                      <span className="relative flex h-full items-center gap-3 pl-6 pr-4">
-                        <Face difficulty={d} tier="rated" className="size-9 shrink-0 object-contain" />
-                        <span className="min-w-0 leading-tight">
-                          <span className="block truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">{d}</span>
-                          <span className="font-heading text-lg font-black tabular-nums text-white">
-                            {beaten}
-                            <span className="text-sm font-bold text-slate-500">/{total}</span>
-                          </span>
+                const c = DIFF_COLOR[d]
+                const on = diffs.includes(d)
+                const pct = total ? (beaten / total) * 100 : 0
+                return (
+                  <button
+                    key={d}
+                    onClick={() => setDiffs((x) => toggle(x, d))}
+                    aria-pressed={on}
+                    title={on ? `Showing ${d} only. Click to remove.` : `Show only ${d}`}
+                    className="relative h-16 shrink-0 text-left transition-opacity duration-200 hover:!opacity-100"
+                    style={{
+                      flex: `${Math.max(total, 1)} 1 0`,
+                      minWidth: 128,
+                      background: 'rgba(255,255,255,.045)',
+                      opacity: diffs.length && !on ? 0.5 : 1,
+                      clipPath: 'polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%)',
+                    }}
+                  >
+                    <span className="absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(135deg, ${c}22 0 2px, transparent 2px 8px)` }} />
+                    <span className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${c}55, ${c}30)` }} />
+                    <span className="absolute bottom-0 left-0 h-[3px]" style={{ width: `${pct}%`, background: c }} />
+                    {on && <span className="absolute inset-x-0 top-0 h-[3px] bg-white" />}
+                    <span className="relative flex h-full items-center gap-3 pl-6 pr-4">
+                      <Face difficulty={d} tier="rated" className="size-9 shrink-0 object-contain" />
+                      <span className="min-w-0 leading-tight">
+                        <span className="block truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">{d}</span>
+                        <span className="font-heading text-lg font-black tabular-nums text-white">
+                          {beaten}
+                          <span className="text-sm font-bold text-slate-500">/{total}</span>
                         </span>
                       </span>
-                    </button>
-                  )
-                })}
+                    </span>
+                  </button>
+                )
+              })}
           </div>
         </div>
 
@@ -2142,6 +2250,17 @@ export default function LevelsPage() {
                 )}
               </div>
 
+              {/* sort direction */}
+              <button
+                onClick={() => setFlipped((f) => !f)}
+                aria-label={flipped ? 'Sort direction: reversed. Click for normal' : 'Sort direction: normal. Click to reverse'}
+                aria-pressed={flipped}
+                title={flipped ? 'Reversed' : 'Normal'}
+                className="grid size-11 shrink-0 place-items-center border border-white/10 bg-black/40 text-slate-300 transition hover:border-white/25 hover:text-white"
+              >
+                {flipped ? <ArrowUpNarrowWide className="size-4" style={{ color: BRAND }} /> : <ArrowDownWideNarrow className="size-4" />}
+              </button>
+
               {/* sort */}
               <div ref={sortRef} className="relative order-3 min-w-0 flex-1 sm:flex-none">
                 <button
@@ -2223,7 +2342,7 @@ export default function LevelsPage() {
                   <span className="gl-fill inline-block h-4 w-28 align-middle" />
                 ) : (
                   <>
-                    <span className="font-bold tabular-nums text-white">{String(filtered.length).padStart(3, '0')}</span> / {levels.length} levels
+                    <span className="font-bold tabular-nums text-white" aria-live="polite">{String(filtered.length).padStart(3, '0')}</span> / {levels.length} levels
                   </>
                 )}
               </span>
@@ -2279,13 +2398,13 @@ export default function LevelsPage() {
         ) : view === 'grid' ? (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} />
+              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} />
+              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} />
             ))}
           </div>
         )}

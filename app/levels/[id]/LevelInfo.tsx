@@ -189,7 +189,7 @@ const deaths = useMemo(() => {
 
   const bestRuns = useMemo(
     () => groupRuns(level.runs.filter((r) => r.startPercent > 0))
-      .sort((a, b) => b.endPercent - a.endPercent || (b.endPercent - b.startPercent) - (a.endPercent - a.startPercent)).slice(0, 10),
+      .sort((a, b) => (b.endPercent - b.startPercent) - (a.endPercent - a.startPercent) || b.endPercent - a.endPercent).slice(0, 10),
     [level.runs],
   )
 
