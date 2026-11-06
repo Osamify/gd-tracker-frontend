@@ -16,6 +16,7 @@ interface BestRunsColumnProps {
   bestRuns: RunGroup[];
   plan: RunPlan;
   chain: Run[];
+  gaps: Run[];
   totalSecs: number;
   t: (secs: number) => string;
   freshKey: string | null;
@@ -28,8 +29,9 @@ const RANK = [
   'bg-gradient-to-br from-orange-300 to-orange-600 text-orange-950 shadow-[0_0_12px_-3px_rgba(251,146,60,0.6)]',
 ];
 
+
 export default function BestRunsColumn({
-  bestRuns, plan, chain, totalSecs, t, freshKey
+  bestRuns, plan, chain, gaps, totalSecs, t, freshKey
 }: BestRunsColumnProps) {
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -103,10 +105,10 @@ export default function BestRunsColumn({
 
       {/* Best runs to 100% */}
       <Collapsible title="Best Runs to 100%" icon={<Rocket className="size-4" />} count={plan.complete ? `${plan.count} runs` : 'Gap found'}>
-        {!plan.complete && (
+        {!plan.complete && gaps.length > 0 && (
           <p className="mb-3 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
             <AlertTriangle className="size-4 shrink-0" />
-            No run covers {plan.gapAt}% yet. This is the partial route so far.
+            Not covered yet: {gaps.map((g) => `${g.startPercent}–${g.endPercent}%`).join(', ')}. Below is the best route with the runs you have.
           </p>
         )}
         {chain.length === 0 ? (
@@ -121,7 +123,7 @@ export default function BestRunsColumn({
                 <span>Route map</span>
                 <span className="flex items-center gap-1" style={{ color: plan.complete ? A : undefined }}>
                   <Flag className="size-3" />
-                  {plan.complete ? 'reaches 100%' : `stops at ${plan.gapAt}%`}
+                  {plan.complete ? 'reaches 100%' : `${gaps.length} gap${gaps.length === 1 ? '' : 's'} left`}
                 </span>
               </div>
               <div className="relative flex flex-col gap-1">
@@ -181,8 +183,7 @@ export default function BestRunsColumn({
             </ol>
             <p className="mt-3 text-xs text-slate-500">
               Clear these {chain.length} runs back to back to cover 0% → 100%
-              {plan.complete ? '.' : ' (route incomplete).'}
-            </p>
+              {plan.complete ? '.' : ` (route incomplete, ${gaps.length} gap${gaps.length === 1 ? '' : 's'} left).`}            </p>
           </>
         )}
       </Collapsible>

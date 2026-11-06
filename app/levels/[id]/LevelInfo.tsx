@@ -10,7 +10,7 @@
 // =====================================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {type Level, type Run, DeathStat } from '@/lib/types'
+import { type Level, type Run, DeathStat } from '@/lib/types'
 import { minimumRunsToComplete } from '../../../lib/level-helpers'
 
 // Sub-components
@@ -166,21 +166,21 @@ export default function LevelInfo({ level, deathStats }: { level: LevelDetail, d
   /*  2. Derived Data (UseMemo)                                                 */
   /* -------------------------------------------------------------------------- */
 
-const deaths = useMemo(() => {
-  // 1. Check if we have the new DeathStats
-  if (deathStats && deathStats.length > 0) {
-    const expanded: number[] = [];
-    deathStats.forEach(stat => {
-      for (let i = 0; i < stat.deathCount; i++) {
-        expanded.push(stat.percentage);
-      }
-    });
-    return expanded;
-  }
-  
-  // 2. Fallback to old logic
-  return level.deaths?.length ? level.deaths : level.runs.filter((r) => r.startPercent === 0 && r.endPercent < 100).map((r) => r.endPercent);
-}, [deathStats, level.deaths, level.runs]);
+  const deaths = useMemo(() => {
+    // 1. Check if we have the new DeathStats
+    if (deathStats && deathStats.length > 0) {
+      const expanded: number[] = [];
+      deathStats.forEach(stat => {
+        for (let i = 0; i < stat.deathCount; i++) {
+          expanded.push(stat.percentage);
+        }
+      });
+      return expanded;
+    }
+
+    // 2. Fallback to old logic
+    return level.deaths?.length ? level.deaths : level.runs.filter((r) => r.startPercent === 0 && r.endPercent < 100).map((r) => r.endPercent);
+  }, [deathStats, level.deaths, level.runs]);
   // with backend DeathStats we keep the time of the last death for each percent; the old fallback has no times
   const grouped: DeathGroup[] = useMemo(
     () => (deathStats?.length ? groupDeathStats(deathStats) : groupDeaths(deaths).map((g) => ({ ...g, lastDiedAt: null }))),
@@ -220,7 +220,7 @@ const deaths = useMemo(() => {
     : 0
 
   const chainTotal = chain.reduce((s, r) => s + (r.endPercent - r.startPercent), 0)
-  const overlap = Math.max(0, chainTotal - 100)
+  const overlap = plan.complete ? Math.max(0, chainTotal - 100) : 0
   const inPlan = (r: Run) => chain.some((c) => c.startPercent === r.startPercent && c.endPercent === r.endPercent)
 
   /* -------------------------------------------------------------------------- */
@@ -390,6 +390,7 @@ const deaths = useMemo(() => {
                 bestRuns={bestRuns}
                 plan={plan}
                 chain={chain}
+                gaps={plan.gaps}
                 totalSecs={totalSecs}
                 t={t}
                 freshKey={freshKey}

@@ -80,30 +80,41 @@ export const TIER_STYLE: Record<Tier, { label: string; chip: string; glow: strin
  * practice runs whose overlap stitches 0% to 100%.
  */
 export function minimumRunsToComplete(runs: Run[]): RunPlan {
-  // 👇 Updated to startPercent
-  const sorted = [...runs].sort((a, b) => a.startPercent - b.startPercent)
+  const sorted = runs
+    .filter((r) => r.endPercent > r.startPercent)
+    .sort((a, b) => a.startPercent - b.startPercent)
   const chain: Run[] = []
+  const gaps: Run[] = []
   let reach = 0
   let i = 0
 
   while (reach < 100) {
     let best: Run | null = null
-    // 👇 Updated to startPercent / endPercent
     while (i < sorted.length && sorted[i].startPercent <= reach) {
       if (!best || sorted[i].endPercent > best.endPercent) best = sorted[i]
       i++
     }
-    if (!best || best.endPercent <= reach) {
-      return { complete: false, count: chain.length, chain, gapAt: reach }
+
+    if (best && best.endPercent > reach) {
+      chain.push(best)
+      reach = best.endPercent
+      continue
     }
-    chain.push(best)
-    reach = best.endPercent
+
+    const next = sorted[i]
+    if (!next) {
+      gaps.push({ startPercent: reach, endPercent: 100 })
+      break
+    }
+    gaps.push({ startPercent: reach, endPercent: next.startPercent })
+    reach = next.startPercent
   }
 
-  return { complete: true, count: chain.length, chain }
-}
-
-// 👇 FIXED THE BUG HERE
-export function bestRun(runs: Run[]): number {
-  return runs.length > 0 ? Math.max(...runs.map((r) => r.endPercent)) : 0
+  return {
+    complete: gaps.length === 0,
+    count: chain.length,
+    chain,
+    gaps,
+    gapAt: gaps.length ? gaps[0].startPercent : undefined,
+  }
 }

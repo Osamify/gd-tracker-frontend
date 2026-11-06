@@ -56,7 +56,10 @@ export type ActivityEntry =
   | { id: string; type: 'run'; levelId: string; startPercent: number; endPercent: number; at: string }
   | { id: string; type: 'death'; levelId: string; percent: number; at: string }
 
-export type RunPlan =
-  | { complete: true; count: number; chain: Run[] }
-  | { complete: false; count: number; chain: Run[]; gapAt: number }
-
+export type RunPlan = {
+  complete: boolean
+  count: number
+  chain: Run[]
+  gaps: Run[]
+  gapAt?: number // where the first gap starts (only when complete is false)
+}
