@@ -211,6 +211,21 @@ export default function LevelHero({
   name, creator, progress, best, difficultyLabel, faceDiff, tier, glowClass,
   gddp, nlw, enjoyment, ratingCount, aredl, beaten
 }: LevelHeroProps) {
+  const router = useRouter()
+
+  // "B" goes back to the levels list (not while typing, and Ctrl/Cmd+B is left alone)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      e.preventDefault()
+      router.push('/levels')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [router])
+
   return (
     // z-20 so the search dropdown sits above the cards below
     <header className="relative isolate z-20">
@@ -230,9 +245,11 @@ export default function LevelHero({
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/levels"
+            title="Back to levels (B)"
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm font-semibold text-slate-200 backdrop-blur-md transition hover:border-white/30 hover:text-white"
           >
             <ArrowLeft className="size-4" /> Back
+            <kbd className="hidden rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 sm:block">B</kbd>
           </Link>
           <LevelSearch />
         </div>

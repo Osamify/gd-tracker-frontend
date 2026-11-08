@@ -308,18 +308,10 @@ const fmtTier = (n: number) => n.toFixed(2)
 
 /**
  * Hardest first:
- *  1. difficulty (Extreme > Insane > ...)
- *  2. inside Extreme, the AREDL position (#1 is the hardest; levels not on the list come after)
- *  3. otherwise (or on a tie) the GDDP tier, higher = harder
+ *  .the GDDP tier, higher = harder
  */
 // ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 function hardest(a: LevelItem, b: LevelItem) {
-  const d = DIFFICULTIES.indexOf(b.demonDifficulty) - DIFFICULTIES.indexOf(a.demonDifficulty)
-  if (d) return d
-  if (a.demonDifficulty === 'Extreme') {
-    const r = (a.aredlRank ?? 1e9) - (b.aredlRank ?? 1e9)
-    if (r) return r
-  }
   return (b.gddpTier ?? 0) - (a.gddpTier ?? 0) || a.name.localeCompare(b.name)
 }
 
@@ -1783,9 +1775,10 @@ export default function LevelsPage() {
   // Top to bottom: masthead, stats, target banner, difficulty ladder, filter bar, results, pager. The slim bar and the
   // buttons at the bottom are fixed on screen and appear once you scroll down.
   return (
-    <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
+    <div className="relative isolate min-h-screen bg-[#08090b] text-slate-200 lg:flex" style={{ opacity: revealed ? 1 : 0, transition: revealed ? 'opacity .15s' : 'none' }}>
       <style>{CSS}</style>
-      {/* <Sidebar /> */}
+      {/* sidebar: sticky column on desktop, drawer on phones. It sets --sb-w (its width) for the fixed slim bar below. */}
+      <Sidebar />
 
       {/* backdrop: faint blueprint grid + a lime haze in the corner */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
@@ -1810,6 +1803,7 @@ export default function LevelsPage() {
       {/* slim bar: appears when the big filter box has scrolled out of view.  SPLIT → components/tracker/levels-slim-bar.tsx (logo, search, status, difficulty, sort, view, MiniPager) */}
       <div
         className={`fixed inset-x-0 top-0 z-30 transition duration-300 ${showJump ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-full opacity-0'}`}
+        style={{ left: 'var(--sb-w, 0px)' }}
         aria-hidden={!showJump}
       >
         <div className="border-b border-white/10 bg-[#08090b]/90 backdrop-blur-xl">
@@ -2016,7 +2010,7 @@ export default function LevelsPage() {
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-7 p-4 md:p-6 xl:px-10">
+      <div className="mx-auto flex w-full min-w-0 max-w-[1800px] flex-1 flex-col gap-7 p-4 md:p-6 xl:px-10">
         {/* ------------------------------------------------------------ Masthead   SPLIT → components/tracker/levels-masthead.tsx (logo, title, ruler) */}
         <header className="gl-rise">
           <div className="flex flex-wrap items-end justify-between gap-4">
