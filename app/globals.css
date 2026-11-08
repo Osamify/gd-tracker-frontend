@@ -4,7 +4,7 @@
   --background: #ffffff;
   --foreground: #171717;
 
-  --scroll-primary: #334155; 
+  --scroll-primary: #334155;
   --scroll-secondary: #1e293b;
 }
 
@@ -32,29 +32,8 @@ body {
 /* Custom Dynamic Scrollbar                  */
 /* ========================================= */
 
-::-webkit-scrollbar {
-  width: 12px;
-}
-
-::-webkit-scrollbar-track {
-  background: #070b0e; /* Matches your page background */
-}
-
-::-webkit-scrollbar-thumb {
-  /* 👇 Changed fallback to transparent to prevent the initial flash */
-  background: linear-gradient(to bottom, var(--scroll-primary, transparent), var(--scroll-secondary, transparent));
-  border-radius: 999px;
-  border: 3px solid #070b0e; /* Creates a nice floating gap effect */
-    transition: background 0.5s ease-in-out;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  filter: brightness(1.2);
-}
-
-/* For Firefox */
-* {
+/* Custom Dynamic Scrollbar */
+html {
   scrollbar-width: thin;
-  scrollbar-color: var(--scroll-primary, transparent) #070b0e;
+  scrollbar-color: var(--scroll-primary, #334155) #070b0e;
 }
-

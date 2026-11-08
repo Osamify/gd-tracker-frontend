@@ -5,6 +5,7 @@ import LevelInfo from './LevelInfo'
 import type { Level, CombinedAttempts, DeathStat } from '@/lib/types'
 import Loader from '@/components/ui/loading'
 import { extractColorsFromImage } from '@/lib/server-colors'
+import ScrollColors from '@/components/level-detail/scroll-colors'
 
 
 
@@ -72,6 +73,7 @@ async function LevelContent({ params }: { params: Promise<{ id: string }> }) {
           --scroll-secondary: ${secondary};
         }
       `}</style>
+      <ScrollColors primary={primary} secondary={secondary} />
       <LevelInfo level={level} deathStats={deathStats} />
     </>
   )

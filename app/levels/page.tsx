@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
 import {
   AlertTriangle,
@@ -10,6 +11,7 @@ import {
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpNarrowWide,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -273,6 +275,7 @@ const toTier = (rating: string): Tier => {
 // ► MOVE TO lib/levels-config.ts  [phase 1: data layer, split this first]
 const SORTS = [
   { id: 'recent', label: 'Recently played' },
+  { id: 'beaten', label: 'Recently beaten' },
   { id: 'best', label: 'Best run' },
   { id: 'attempts', label: 'Most attempts' },
   { id: 'difficulty', label: 'Hardest' },
@@ -301,6 +304,15 @@ type StatusId = (typeof STATUSES)[number]['id']
 const isBeaten = (l: LevelItem) => l.progress >= 100 || Boolean(l.dateCompleted)
 // ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 const isFresh = (l: LevelItem) => l.progress === 0 && l.runs.length === 0
+
+// ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
+/** The day you beat the level, in YOUR time zone (so a clear just after midnight counts for that day). null = not beaten or no date. */
+const clearedDate = (l: LevelItem) => {
+  if (!isBeaten(l) || !l.dateCompleted) return null
+  const d = new Date(l.dateCompleted)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 // ► MOVE TO lib/level-helpers.ts  [phase 1: data layer, split this first]
 /** GDDP tier always with two decimals: 19.22 */
@@ -752,10 +764,23 @@ function Highlight({ text, q }: { text: string; q: string }) {
   )
 }
 
+// SPLIT → components/level/card-parts.tsx (next to Cell).   [phase 2: screen, can wait]
+// The small key badge on a card: type that number on the keyboard to open the level (see "number keys" in LevelsPage). Hidden on phones.
+function HotkeyHint({ n }: { n: number }) {
+  return (
+    <kbd
+      title={`Press ${n} to open`}
+      className="hidden border border-white/15 bg-black/60 px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-slate-400 backdrop-blur-md sm:block"
+    >
+      {n}
+    </kbd>
+  )
+}
+
 // SPLIT → components/tracker/levels-card.tsx.   [phase 2: screen, can wait]
 // The big full-art card of the grid view: art, rank, status, GDDP tier, percent, progress bar, 3D tilt on hover.
 // (components/tracker/level-card.tsx already exists, so give this one another name.)
-function LevelCard({ level, now, index, rank, q = '' }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string }) {
+function LevelCard({ level, now, index, rank, q = '', hotkey, picked = false }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -785,7 +810,11 @@ function LevelCard({ level, now, index, rank, q = '' }: { level: LevelItem; now:
   }
 
   return (
-    <div className="gl-rise" style={{ animationDelay: `${delay}ms` }}>
+    <div
+      id={`lvl-${index}`}
+      className="gl-rise"
+      style={{ animationDelay: `${delay}ms`, ...(picked ? { outline: `2px solid ${BRAND}`, outlineOffset: 5, borderRadius: '1rem', boxShadow: `0 0 40px -6px ${BRAND}88` } : null) }}
+    >
       <Link
         ref={ref}
         onPointerMove={onMove}
@@ -824,6 +853,7 @@ function LevelCard({ level, now, index, rank, q = '' }: { level: LevelItem; now:
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               {live && <PlayingTag />}
               <RatingChips level={level} />
+              {hotkey != null && <HotkeyHint n={hotkey} />}
             </div>
           </div>
 
@@ -875,7 +905,7 @@ function LevelCard({ level, now, index, rank, q = '' }: { level: LevelItem; now:
 }
 
 // SPLIT → components/tracker/levels-row.tsx. The list-view version of the card (one row per level).   [phase 2: screen, can wait]
-function LevelRow({ level, now, index, rank, q = '' }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string }) {
+function LevelRow({ level, now, index, rank, q = '', hotkey, picked = false }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -886,7 +916,7 @@ function LevelRow({ level, now, index, rank, q = '' }: { level: LevelItem; now: 
   const length = level.totalSeconds != null ? formatDuration(level.totalSeconds) : '—'
 
   return (
-    <div className="gl-rise" style={{ animationDelay: `${Math.min(index, 12) * 35}ms`, '--ac': GREEN } as CSSProperties}>
+    <div id={`lvl-${index}`} className="gl-rise" style={{ animationDelay: `${Math.min(index, 12) * 35}ms`, '--ac': GREEN, ...(picked ? { '--bd': BRAND, filter: `drop-shadow(0 0 14px ${BRAND}99)` } : null) } as CSSProperties}>
       <Link href={`/levels/${level.id}`} className="gl-lift group block">
         <Cut c={12} bd={beaten ? `${GREEN}66` : undefined} className="group-hover:[--bd:var(--ac)]" inner="flex flex-col gap-3 overflow-hidden py-3 pl-5 pr-4 md:flex-row md:items-center md:gap-4">
           <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-[0.22] [mask-image:linear-gradient(to_left,#000,transparent)]">
@@ -957,6 +987,11 @@ function LevelRow({ level, now, index, rank, q = '' }: { level: LevelItem; now: 
           <div className="relative hidden w-[5rem] shrink-0 text-right font-heading text-3xl font-black tabular-nums md:block" style={{ color: GREEN }}>
             {level.progress}%
           </div>
+          {hotkey != null && (
+            <span className="relative hidden w-9 shrink-0 justify-center md:flex">
+              <HotkeyHint n={hotkey} />
+            </span>
+          )}
           <ArrowRight className="relative hidden size-4 shrink-0 text-slate-600 transition duration-300 group-hover:translate-x-1 group-hover:text-white md:block" />
         </Cut>
       </Link>
@@ -1360,7 +1395,7 @@ function MiniPager({ page, pages, onPage, tabbable, className = '' }: { page: nu
 }
 
 // SPLIT → lib/levels-state.ts. What is stored in sessionStorage (filters, page, scroll) and how it is read back safely.   [phase 2: screen, can wait]
-type SavedState = { page?: number; perPage?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number }
+type SavedState = { page?: number; perPage?: number; query?: string; diffs?: string[]; status?: string; saved?: string | null; scrollY?: number; cYear?: number | 'none' | null; cMonth?: number | null }
 
 /**
  * Only used when you come Back inside the app (the levels are cached, so this render is not a hydration).
@@ -1419,6 +1454,13 @@ export default function LevelsPage() {
   const [miniDiffOpen, setMiniDiffOpen] = useState(false)
   const miniDiffRef = useRef<HTMLDivElement>(null)
   const [diffOpen, setDiffOpen] = useState(false)
+  // "Cleared in": the year (or 'none' = beaten without a date) and optionally the month (0 = Jan) you beat the level. null = any.
+  const [cYear, setCYear] = useState<number | 'none' | null>(() => (init?.cYear === 'none' ? 'none' : typeof init?.cYear === 'number' ? init.cYear : null))
+  const [cMonth, setCMonth] = useState<number | null>(() => (typeof init?.cMonth === 'number' && init.cMonth >= 0 && init.cMonth < 12 ? init.cMonth : null))
+  const [dateOpen, setDateOpen] = useState(false)
+  const dateRef = useRef<HTMLDivElement>(null)
+  // the date filter only applies on the Beaten tab (where it makes sense); the choice is kept when you switch tabs
+  const dateOn = status === 'beaten' && cYear !== null
   const [now, setNow] = useState<number | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const miniRef = useRef<HTMLInputElement>(null)
@@ -1496,6 +1538,7 @@ export default function LevelsPage() {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node
       if (diffRef.current && !diffRef.current.contains(t)) setDiffOpen(false)
+      if (dateRef.current && !dateRef.current.contains(t)) setDateOpen(false)
       if (sortRef.current && !sortRef.current.contains(t)) setSortOpen(false)
       if (miniSortRef.current && !miniSortRef.current.contains(t)) setMiniSortOpen(false)
       if (miniDiffRef.current && !miniDiffRef.current.contains(t)) setMiniDiffOpen(false)
@@ -1503,6 +1546,7 @@ export default function LevelsPage() {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setDiffOpen(false)
+        setDateOpen(false)
         setSortOpen(false)
         setMiniSortOpen(false)
         setMiniDiffOpen(false)
@@ -1518,8 +1562,8 @@ export default function LevelsPage() {
 
   // ── 2. EFFECTS ───────────────────────────────────────────────────────────
   // ---- remember where you were (filters, how many cards are loaded, scroll), so Back from a level lands in the same place ----
-  const stateRef = useRef({ page: 1, perPage: DEFAULT_PER_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId })
-  stateRef.current = { page, perPage, query, diffs, status }
+  const stateRef = useRef({ page: 1, perPage: DEFAULT_PER_PAGE, query: '', diffs: [] as Difficulty[], status: 'beaten' as StatusId, cYear: null as number | 'none' | null, cMonth: null as number | null })
+  stateRef.current = { page, perPage, query, diffs, status, cYear, cMonth }
   const restoreRef = useRef<{ scrollY: number } | null>(init ? { scrollY: Number(init.scrollY) || 0 } : null)
   // ► CAN BECOME A HOOK: lib/use-levels-restore.ts → useRestorePosition()  (save/restore filters, page and scroll)  [phase 2: screen, can wait]
   const persist = useCallback(() => {
@@ -1540,6 +1584,8 @@ export default function LevelsPage() {
         queryRef.current = v.query
         setQuery(v.query)
       }
+      if (v.cYear === 'none' || typeof v.cYear === 'number') setCYear(v.cYear)
+      if (typeof v.cMonth === 'number' && v.cMonth >= 0 && v.cMonth < 12) setCMonth(v.cMonth)
       if (Array.isArray(v.diffs)) setDiffs(v.diffs.filter((d: string) => (DIFFICULTIES as string[]).includes(d)) as Difficulty[])
       if (STATUSES.some((x) => x.id === v.status)) setStatus(v.status)
       if (STATUSES.some((x) => x.id === v.saved)) savedStatus.current = v.saved
@@ -1556,7 +1602,7 @@ export default function LevelsPage() {
     const top = bar.getBoundingClientRect().bottom + window.scrollY + 28 - 64
     if (window.scrollY > top + slack) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }, [])
-  const filterKey = JSON.stringify([query, diffs, status, sort, flipped])
+  const filterKey = JSON.stringify([query, diffs, status, sort, flipped, cYear, cMonth])
   const lastKey = useRef(filterKey)
   useEffect(() => {
     if (restoreRef.current) {
@@ -1618,7 +1664,7 @@ export default function LevelsPage() {
   //    router moves), when the filters or "Load more" change, and when the tab is hidden or closed.
   useEffect(() => {
     if (!restoreRef.current) persist()
-  }, [page, perPage, query, diffs, status, persist])
+  }, [page, perPage, query, diffs, status, cYear, cMonth, persist])
   useEffect(() => {
     const onHide = () => {
       if (!restoreRef.current) persist()
@@ -1657,11 +1703,21 @@ export default function LevelsPage() {
       if (status === 'beaten' && !isBeaten(l)) return false
       if (status === 'progress' && (isBeaten(l) || isFresh(l))) return false
       if (status === 'fresh' && !isFresh(l)) return false
+      if (dateOn) {
+        const d = clearedDate(l)
+        if (cYear === 'none') {
+          if (d) return false
+        } else {
+          if (!d || d.getFullYear() !== cYear) return false
+          if (cMonth !== null && d.getMonth() !== cMonth) return false
+        }
+      }
       return true
     })
     const time = (l: LevelItem) => (l.lastPlayedAt ? new Date(l.lastPlayedAt).getTime() : 0)
     const cmp: Record<SortId, (a: LevelItem, b: LevelItem) => number> = {
       recent: (a, b) => time(b) - time(a),
+      beaten: (a, b) => (clearedDate(b)?.getTime() ?? 0) - (clearedDate(a)?.getTime() ?? 0),
       best: (a, b) => b.progress - a.progress || b.totalAttempts - a.totalAttempts,
       attempts: (a, b) => b.totalAttempts - a.totalAttempts,
       difficulty: hardest,
@@ -1670,7 +1726,7 @@ export default function LevelsPage() {
     }
     const sorted = [...out].sort(cmp[sort])
     return flipped ? sorted.reverse() : sorted
-  }, [levels, query, diffs, status, sort, flipped])
+  }, [levels, query, diffs, status, sort, flipped, dateOn, cYear, cMonth])
 
   // numbers for the hero: total, beaten, in progress, attempts, average best run
   // ► BACKEND PAGING: stats, counts, resume (target) and ladder need EVERY level → they move to a small "summary" endpoint.
@@ -1717,8 +1773,38 @@ export default function LevelsPage() {
     [levels],
   )
 
-  const activeFilters = diffs.length + (status !== 'all' ? 1 : 0) + (query.trim() ? 1 : 0)
+  // years you beaten levels in, with a count per month (respects the difficulty filter). `none` = beaten without a date.
+  const cleared = useMemo(() => {
+    const years = new Map<number, number[]>()
+    let none = 0
+    for (const l of levels) {
+      if (!isBeaten(l)) continue
+      if (diffs.length && !diffs.includes(l.demonDifficulty)) continue
+      const d = clearedDate(l)
+      if (!d) {
+        none++
+        continue
+      }
+      const m = years.get(d.getFullYear()) ?? Array<number>(12).fill(0)
+      m[d.getMonth()]++
+      years.set(d.getFullYear(), m)
+    }
+    const sorted = [...years.entries()].sort((a, b) => b[0] - a[0])
+    const sum = (m: number[]) => m.reduce((a, b) => a + b, 0)
+    // the rows of the year list: All years, each year (newest first), then "No date"
+    const items: { key: string; value: number | 'none' | null; n: number }[] = [
+      { key: 'all', value: null, n: sorted.reduce((n, [, m]) => n + sum(m), 0) + none },
+      ...sorted.map(([y, m]) => ({ key: String(y), value: y, n: sum(m) })),
+      ...(none ? [{ key: 'none', value: 'none' as const, n: none }] : []),
+    ]
+    return { years: sorted, none, items }
+  }, [levels, diffs])
+  const dateLabel = cYear === null ? 'Date' : cYear === 'none' ? 'No date' : cMonth !== null ? `${MONTHS[cMonth]} ${cYear}` : String(cYear)
+
+  const activeFilters = diffs.length + (status !== 'all' ? 1 : 0) + (query.trim() ? 1 : 0) + (dateOn ? 1 : 0)
   const reset = () => {
+    setCYear(null)
+    setCMonth(null)
     queryRef.current = ''
     savedStatus.current = null
     setQuery('')
@@ -1767,6 +1853,85 @@ export default function LevelsPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [curPage, pages, scrollToResults])
   const sortLabel = SORTS.find((s) => s.id === sort)?.label
+
+  // ---- number keys: type a card's number to SELECT it, Enter opens it ----
+  // Type the card's number (the badge on the card: 1 to 9, or 12, 23 ... with 15, 30, 60 or 99 per page). The card lights up, the page
+  // scrolls to it and a bubble shows its name. Enter opens it, Esc cancels, Backspace removes a digit. Nothing opens by itself.
+  // The number is the card's POSITION on this page, not its #rank.
+  // ► CAN BECOME A HOOK: lib/use-number-keys.ts → useNumberKeys(shown, persist)  [phase 2: screen, can wait]
+  const router = useRouter()
+  const [typed, setTyped] = useState('') // digits typed so far; '' = nothing selected
+  const typedRef = useRef('')
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shownRef = useRef(shown)
+  shownRef.current = shown
+  const popupOpenRef = useRef(false)
+  popupOpenRef.current = diffOpen || dateOpen || sortOpen || miniSortOpen || miniDiffOpen
+  const pick = typed ? Number(typed) - 1 : -1 // index in `shown` of the selected card
+
+  useEffect(() => {
+    const set = (v: string) => {
+      typedRef.current = v
+      setTyped(v)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+      // forgotten selection goes away after 6 s without a key (it never opens by itself)
+      idleTimer.current = v ? setTimeout(() => set(''), 6000) : null
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+      const has = typedRef.current !== ''
+
+      if (has && e.key === 'Escape') return set('')
+      if (has && e.key === 'Backspace') {
+        e.preventDefault()
+        return set(typedRef.current.slice(0, -1))
+      }
+      if (has && e.key === 'Enter') {
+        e.preventDefault()
+        const l = shownRef.current[Number(typedRef.current) - 1]
+        set('')
+        if (!l) return
+        persist() // remember filters, page and scroll, so Back (or B) lands in the same place
+        router.push(`/levels/${l.id}`)
+        return
+      }
+
+      if (!/^[0-9]$/.test(e.key)) return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (popupOpenRef.current || document.querySelector('[role="dialog"]')) return // a menu or the phone drawer is open
+      const count = shownRef.current.length
+      const valid = (v: string) => v !== '' && Number(v) >= 1 && Number(v) <= count
+      e.preventDefault()
+      const next = typedRef.current + e.key
+      if (valid(next)) set(next)
+      else if (valid(e.key)) set(e.key) // "19" does not exist here: start over with this digit
+    }
+    // a click anywhere clears the selection
+    const onDown = () => typedRef.current && set('')
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onDown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onDown)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+    }
+  }, [router, persist])
+
+  // bring the selected card into view (only if it is not fully visible; the slim bar covers the top 64px)
+  useEffect(() => {
+    if (pick < 0) return
+    const el = document.getElementById(`lvl-${pick}`)
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.top < 80 || r.bottom > window.innerHeight - 16) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [pick])
+
+  // a new page, filter or sort cancels the selection (so card 5 of the old page is not suddenly card 5 of the next one)
+  useEffect(() => {
+    typedRef.current = ''
+    setTyped('')
+  }, [curPage, perPage, filtered])
 
   showJumpRef.current = showJump
   const mono = 'font-mono text-[10px] font-bold uppercase tracking-[0.22em]'
@@ -1984,7 +2149,7 @@ export default function LevelsPage() {
 
           {/* phones: the status tabs get their own scrolling row (the wide layout shows them in the bar above) */}
           <div className="flex items-stretch border-t border-white/[0.06] md:hidden">
-            <div className="flex min-w-0 flex-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {STATUSES.map((st) => {
                 const active = status === st.id
                 return (
@@ -2107,7 +2272,7 @@ export default function LevelsPage() {
               </button>
             )}
           </div>
-          <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-1.5 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
                 <span key={i} className="gl-fill block h-16 min-w-[128px] flex-1" style={{ '--d': `${i * 0.18}s`, clipPath: 'polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%)' } as CSSProperties} />
@@ -2244,6 +2409,97 @@ export default function LevelsPage() {
                 )}
               </div>
 
+              {/* cleared in (year, then month). Only on the Beaten tab. */}
+              {status === 'beaten' && (
+                <div ref={dateRef} className="relative order-2">
+                  <button
+                    onClick={() => {
+                      setDateOpen((o) => !o)
+                      setDiffOpen(false)
+                      setSortOpen(false)
+                    }}
+                    aria-expanded={dateOpen}
+                    aria-label="Filter by the date you beat the level"
+                    title="Cleared in"
+                    className={`flex h-11 items-center justify-center gap-2 border px-3 font-mono text-xs font-bold uppercase tracking-wider transition ${dateOn ? 'bg-white/[0.06] text-white' : 'border-white/10 bg-black/40 text-slate-300 hover:border-white/25 hover:text-white'}`}
+                    style={dateOn ? { borderColor: `${BRAND}99` } : undefined}
+                  >
+                    <CalendarDays className="size-4" style={{ color: BRAND }} />
+                    <span className="hidden tabular-nums sm:inline">{dateLabel}</span>
+                  </button>
+
+                  {dateOpen && (
+                    <div className="absolute left-0 z-30 mt-2 w-72 max-w-[calc(100vw-3rem)] border border-white/15 bg-[#0d1013] shadow-[0_24px_60px_-12px_rgba(0,0,0,.9)]">
+                      <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
+                        <span className={`${mono} flex items-center gap-1.5 text-slate-500`}>
+                          <CalendarDays className="size-3.5" /> Cleared in
+                        </span>
+                        {cYear !== null && (
+                          <button
+                            onClick={() => {
+                              setCYear(null)
+                              setCMonth(null)
+                            }}
+                            className="font-mono text-xs font-bold hover:underline"
+                            style={{ color: BRAND }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      <ul className="max-h-60 overflow-y-auto p-1.5">
+                        {cleared.items.map(({ key, value, n }) => {
+                          const on = cYear === value
+                          return (
+                            <li key={key}>
+                              <button
+                                onClick={() => {
+                                  setCYear(value)
+                                  setCMonth(null)
+                                }}
+                                aria-pressed={on}
+                                className={`flex w-full items-center gap-3 px-3 py-2 text-left font-mono text-sm font-bold uppercase tracking-wider transition ${on ? 'bg-white/[0.07]' : 'text-slate-200 hover:bg-white/5'}`}
+                                style={on ? { color: BRAND } : undefined}
+                              >
+                                <span className="flex-1">{key === 'all' ? 'All years' : key === 'none' ? 'No date' : key}</span>
+                                <span className="text-xs font-semibold tabular-nums text-slate-500">{n}</span>
+                                {on && <Check className="size-4" />}
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+
+                      {typeof cYear === 'number' && (
+                        <div className="border-t border-white/[0.07] p-2">
+                          <div className={`${mono} mb-1.5 px-1 !text-[9px] text-slate-500`}>Month</div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {MONTHS.map((name, mi) => {
+                              const n = cleared.years.find(([y]) => y === cYear)?.[1][mi] ?? 0
+                              const on = cMonth === mi
+                              return (
+                                <button
+                                  key={name}
+                                  disabled={n === 0}
+                                  onClick={() => setCMonth(on ? null : mi)}
+                                  aria-pressed={on}
+                                  className={`flex flex-col items-center py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition disabled:pointer-events-none disabled:opacity-25 ${on ? 'text-black' : 'border border-white/10 text-slate-300 hover:border-white/30 hover:text-white'}`}
+                                  style={on ? { background: BRAND } : undefined}
+                                >
+                                  {name}
+                                  <span className={`text-[10px] tabular-nums ${on ? 'text-black/70' : 'text-slate-500'}`}>{n}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* sort direction */}
               <button
                 onClick={() => setFlipped((f) => !f)}
@@ -2309,7 +2565,7 @@ export default function LevelsPage() {
             </div>
 
             {/* status tabs */}
-            <div className="-mx-3 mt-3 flex overflow-x-auto border-b border-white/10 px-3 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-3 mt-3 flex overflow-x-auto overflow-y-hidden border-b border-white/10 px-3 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
               {STATUSES.map((s) => {
                 const active = status === s.id
                 return (
@@ -2392,13 +2648,13 @@ export default function LevelsPage() {
         ) : view === 'grid' ? (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} />
+              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} />
+              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} />
             ))}
           </div>
         )}
@@ -2408,6 +2664,29 @@ export default function LevelsPage() {
           <Pager page={curPage} pages={pages} total={filtered.length} from={pageStart + 1} to={pageStart + shown.length} perPage={perPage} onPage={goPage} onPerPage={changePerPage} />
         )}
       </div>
+
+      {/* ------------------------------------------------------------ Number-key bubble: the selected level + how to open it */}
+      {typed && shown[pick] && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2" role="status" aria-live="polite">
+          <Cut c={10} inner="flex items-center gap-3 px-4 py-2.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,.9)]">
+            <kbd className="grid h-8 min-w-8 place-items-center px-2 font-mono text-sm font-black tabular-nums text-black" style={{ background: BRAND }}>
+              {typed}
+            </kbd>
+            <span className="min-w-0">
+              <span className="block max-w-[18rem] truncate font-heading text-sm font-black uppercase tracking-tight text-white">{shown[pick].name}</span>
+              <span className="block truncate font-mono text-[10px] text-slate-500">by {shown[pick].creator}</span>
+            </span>
+            <span className="hidden items-center gap-3 border-l border-white/10 pl-3 font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500 sm:flex">
+              <span>
+                <kbd className="border border-white/20 px-1.5 py-0.5 font-bold text-slate-200">Enter</kbd> open
+              </span>
+              <span>
+                <kbd className="border border-white/20 px-1.5 py-0.5 font-bold text-slate-200">Esc</kbd> cancel
+              </span>
+            </span>
+          </Cut>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------ Jump buttons   the round back-to-top button (fixed, bottom right) */}
       <div
