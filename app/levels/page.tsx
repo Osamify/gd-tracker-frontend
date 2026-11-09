@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -17,12 +18,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Copy,
   Crosshair,
   Crown,
   Flame,
   Gauge,
   LayoutGrid,
   List,
+  Loader2,
+  Pencil,
   Play,
   RefreshCw,
   RotateCcw,
@@ -31,6 +35,7 @@ import {
   Sparkles,
   Star,
   Swords,
+  Trash2,
   Trophy,
   X,
 } from 'lucide-react'
@@ -38,7 +43,7 @@ import {
 /* ============================================================================
  *  GD TRACKER · /levels   (app/levels/page.tsx)
  *  ----------------------------------------------------------------------------
- *  One big file on purpose: easy to paste and easy to search. Every section is
+ *  One big file on purpose: easy to paste and easy to search. Includes the three-dot menu + Edit details window (needs a PATCH endpoint on the backend). Every section is
  *  marked "SPLIT →" with the file it can move to, using the folders you already
  *  have. To split: cut the section, paste it into the new file, add `export`
  *  in front of it, and import it back here. The code itself does not change.
@@ -108,6 +113,9 @@ type LevelItem = {
   bestAt?: string | null
 }
 
+/** The fields you can change from the "Edit details" window. Add a name here to make another field editable. */
+type LevelPatch = Partial<Pick<LevelItem, 'name' | 'creator' | 'totalSeconds' | 'dateCompleted'>>
+
 // ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard', 'Insane', 'Extreme']
 // ► MOVE TO lib/levels-types.ts  [phase 1: data layer, split this first]
@@ -128,6 +136,26 @@ const AREDL_URL = 'https://api.aredl.net/v2/api/aredl/levels'
  * so coming Back shows the list at once instead of the loading screen. A fresh copy is fetched quietly in the background.
  */
 let LEVELS_CACHE: LevelItem[] | null = null
+
+/**
+ * Sends only the changed fields:   PATCH {BACKEND}/api/Levels/{id}    body: { "name": "...", "totalSeconds": 95, "dateCompleted": null }
+ * Throws if the backend says no, so the page can undo the change on screen.
+ * Needs a matching PATCH endpoint in the C# API (and PATCH allowed in its CORS policy).
+ */
+async function saveLevel(id: number, patch: LevelPatch): Promise<void> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/Levels/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) throw new Error(`Save failed (${res.status})`)
+}
+
+/** DELETE {BACKEND}/api/Levels/{id}. Throws if the backend says no. Needs a matching DELETE endpoint in the C# API (and DELETE allowed in its CORS policy). */
+async function deleteLevelApi(id: number): Promise<void> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/Levels/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Delete failed (${res.status})`)
+}
 
 function useLevels() {
   const [levels, setLevels] = useState<LevelItem[]>(() => LEVELS_CACHE ?? [])
@@ -236,7 +264,41 @@ function useLevels() {
     return () => ctrl.abort()
   }, [tries])
 
-  return { levels, loading, error, updatedAt, refreshing, retry: () => setTries((n) => n + 1) }
+  /**
+   * Edit a level: the change shows on screen at once, then it is sent to the backend.
+   * If the backend refuses, the screen goes back to how it was and the error is thrown (the edit window shows it).
+   */
+  const patchLevel = useCallback(async (id: number, patch: LevelPatch) => {
+    const before = LEVELS_CACHE
+    const apply = (list: LevelItem[]) => list.map((l) => (l.id === id ? { ...l, ...patch } : l))
+    setLevels((prev) => {
+      const next = apply(prev)
+      LEVELS_CACHE = next
+      return next
+    })
+    try {
+      await saveLevel(id, patch)
+    } catch (e) {
+      LEVELS_CACHE = before
+      setLevels(before ?? [])
+      throw e
+    }
+  }, [])
+
+  /**
+   * Delete a level. Unlike an edit, this waits for the backend first and only then removes the card
+   * (a delete that failed should never look like it worked). Throws if the backend refuses.
+   */
+  const removeLevel = useCallback(async (id: number) => {
+    await deleteLevelApi(id)
+    setLevels((prev) => {
+      const next = prev.filter((l) => l.id !== id)
+      LEVELS_CACHE = next
+      return next
+    })
+  }, [])
+
+  return { levels, loading, error, updatedAt, refreshing, retry: () => setTries((n) => n + 1), patchLevel, removeLevel }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -777,10 +839,651 @@ function HotkeyHint({ n }: { n: number }) {
   )
 }
 
+// SPLIT → components/tracker/level-menu.tsx.   [phase 2: screen, can wait]
+// The tab on a card / row and the menu it opens: Open level, Edit details, Copy ID, Delete.
+// The menu opens when you point at the tab (mouse) or click / press Enter on it. It is drawn into document.body (a portal),
+// so the card's tilt and animation can never clip it or hide it behind the next card.
+// Keyboard: Up / Down / Home / End move, Esc closes and gives focus back to the tab.
+
+const MENU_W = 236
+const MENU_H = 250 // rough height, only used to decide whether to open upwards
+
+type Pos = { x: number; y: number; up: boolean }
+
+// the tab shapes: both top corners cut (tab above a card) or both bottom corners cut (tab hanging inside a row)
+const TAB_TOP = (c: number) => `polygon(${c}px 0, calc(100% - ${c}px) 0, 100% ${c}px, 100% 100%, 0 100%, 0 ${c}px)`
+const TAB_BOTTOM = (c: number) => `polygon(0 0, 100% 0, 100% calc(100% - ${c}px), calc(100% - ${c}px) 100%, ${c}px 100%, 0 calc(100% - ${c}px))`
+
+const MENU_CSS = `
+@keyframes lm-down { from { opacity: 0; transform: translateY(-8px) scale(.96) } to { opacity: 1; transform: none } }
+@keyframes lm-up { from { opacity: 0; transform: translateY(8px) scale(.96) } to { opacity: 1; transform: none } }
+@keyframes lm-item { from { opacity: 0; transform: translateX(-8px) } to { opacity: 1; transform: none } }
+.lm-down { animation: lm-down .17s cubic-bezier(.2, .8, .2, 1) both; transform-origin: top right }
+.lm-up { animation: lm-up .17s cubic-bezier(.2, .8, .2, 1) both; transform-origin: bottom right }
+.lm-item { animation: lm-item .24s cubic-bezier(.2, .8, .2, 1) both }
+@media (prefers-reduced-motion: reduce) { .lm-down, .lm-up, .lm-item { animation: none !important } }
+`
+
+function LevelMenu({
+  level,
+  onEdit,
+  onDelete,
+  className = '',
+  variant = 'card',
+}: {
+  level: { id: number; name: string }
+  onEdit: () => void
+  onDelete?: () => void
+  className?: string
+  /** card: the tab grows out of the top edge of the card. row: it hangs from the top edge of the row. */
+  variant?: 'card' | 'row'
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<Pos>({ x: 0, y: 0, up: false })
+  const [copied, setCopied] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const viaHover = useRef(false) // opened by pointing at the tab (closes when the mouse leaves) or by a click (stays until you click away)
+  const focusFirst = useRef(false)
+  const menuId = useId()
+
+  const stopTimer = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = undefined
+  }
+
+  const close = useCallback((refocus = false) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = undefined
+    viaHover.current = false
+    setOpen(false)
+    if (refocus) btnRef.current?.focus()
+  }, [])
+
+  const openMenu = (hover: boolean, focus: boolean) => {
+    stopTimer()
+    const r = btnRef.current?.getBoundingClientRect()
+    if (!r) return
+    const up = r.bottom + MENU_H + 12 > window.innerHeight && r.top > MENU_H
+    setPos({
+      x: Math.min(Math.max(8, r.right - MENU_W), window.innerWidth - MENU_W - 8),
+      y: up ? window.innerHeight - r.top + 6 : r.bottom + 6,
+      up,
+    })
+    viaHover.current = hover
+    focusFirst.current = focus
+    setOpen(true)
+  }
+
+  const onClick = () => {
+    if (open) {
+      if (viaHover.current) viaHover.current = false // clicking while it is open from hover keeps it open
+      else close()
+      return
+    }
+    openMenu(false, true)
+  }
+
+  const onEnter = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.pointerType !== 'mouse') return
+    stopTimer()
+    if (!open) timer.current = setTimeout(() => openMenu(true, false), 130)
+  }
+  const onLeave = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.pointerType !== 'mouse') return
+    stopTimer()
+    if (open && viaHover.current) timer.current = setTimeout(() => close(), 240)
+  }
+
+  useEffect(() => () => stopTimer(), [])
+
+  // focus the first item when it was opened with the keyboard or a click
+  useEffect(() => {
+    if (open && focusFirst.current) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+  }, [open])
+
+  // close on outside click, Esc, scroll, resize
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return
+      close()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        close(true)
+      }
+    }
+    const onAway = () => close()
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onAway, true)
+    window.addEventListener('resize', onAway)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onAway, true)
+      window.removeEventListener('resize', onAway)
+    }
+  }, [open, close])
+
+  const onMenuKey = (e: ReactKeyboardEvent) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+    const i = items.indexOf(document.activeElement as HTMLElement)
+    let next = -1
+    if (e.key === 'ArrowDown') next = (i + 1) % items.length
+    else if (e.key === 'ArrowUp') next = (i - 1 + items.length) % items.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = items.length - 1
+    else if (e.key === 'Tab') return close()
+    if (next >= 0) {
+      e.preventDefault()
+      items[next]?.focus()
+    }
+  }
+
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(String(level.id))
+      setCopied(true)
+      setTimeout(() => {
+        setCopied(false)
+        close()
+      }, 700)
+    } catch {
+      close()
+    }
+  }
+
+  const row = 'lm-item group/i relative flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left outline-none transition-colors'
+  const rowHover = 'hover:bg-white/[0.06] focus-visible:bg-white/[0.06] hover:shadow-[inset_2px_0_0_#d4ff3a] focus-visible:shadow-[inset_2px_0_0_#d4ff3a]'
+  const rowDanger = 'hover:bg-red-500/10 focus-visible:bg-red-500/10 hover:shadow-[inset_2px_0_0_#ef4444] focus-visible:shadow-[inset_2px_0_0_#ef4444]'
+  const tile = 'grid size-8 shrink-0 place-items-center border border-white/10 bg-white/[0.04] transition-colors group-hover/i:border-white/25 group-focus-visible/i:border-white/25'
+  const title = 'block font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-slate-200 transition-colors group-hover/i:text-white group-focus-visible/i:text-white'
+  const sub = 'block truncate text-[11px] text-slate-500'
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={onClick}
+        onPointerEnter={onEnter}
+        onPointerLeave={onLeave}
+        aria-label={`Actions for ${level.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        title="Actions"
+        className={`group/dots cursor-pointer outline-none transition duration-200 ease-out hover:!bg-[#d4ff3a] focus-visible:!bg-[#d4ff3a] ${
+          variant === 'card' ? 'px-px pt-px' : 'px-px pb-px'
+        } ${
+          open
+            ? 'translate-y-0 opacity-100'
+            : `${variant === 'card' ? 'translate-y-1.5' : '-translate-y-1.5'} opacity-0 focus-visible:translate-y-0 focus-visible:opacity-100 group-hover/m:translate-y-0 group-hover/m:opacity-100 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100`
+        } ${className}`}
+        style={{ clipPath: variant === 'card' ? TAB_TOP(9) : TAB_BOTTOM(9), background: open ? BRAND : 'rgba(255,255,255,.2)' }}
+      >
+        <span
+          className="flex h-5 w-12 items-center justify-center gap-1 bg-[#0d1013] transition-colors group-hover/dots:bg-[#141a1f]"
+          style={{ clipPath: variant === 'card' ? TAB_TOP(8) : TAB_BOTTOM(8) }}
+        >
+          {[0, 1, 2].map((d) => (
+            <span key={d} className="size-1 rounded-full transition-colors" style={{ background: open ? BRAND : '#94a3b8' }} />
+          ))}
+        </span>
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            id={menuId}
+            ref={menuRef}
+            role="menu"
+            aria-label={`Actions for ${level.name}`}
+            onKeyDown={onMenuKey}
+            onPointerEnter={onEnter}
+            onPointerLeave={onLeave}
+            className={`fixed z-[80] p-px shadow-[0_28px_70px_-12px_rgba(0,0,0,.95)] ${pos.up ? 'lm-up' : 'lm-down'}`}
+            style={{
+              width: MENU_W,
+              left: pos.x,
+              ...(pos.up ? { bottom: pos.y } : { top: pos.y }),
+              clipPath: poly(12),
+              background: `linear-gradient(135deg, ${BRAND}88, rgba(255,255,255,.14) 45%, rgba(255,255,255,.08))`,
+            }}
+          >
+            <style>{MENU_CSS}</style>
+            <div className="bg-[#0d1013]" style={{ clipPath: poly(11) }}>
+              <div className="border-b border-white/10 px-3 pb-2.5 pt-3">
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.26em]" style={{ color: BRAND }}>
+                  Level #{level.id}
+                </p>
+                <p className="mt-0.5 truncate text-sm font-bold text-white">{level.name}</p>
+              </div>
+
+              <div className="py-1">
+                <Link href={`/levels/${level.id}`} role="menuitem" className={`${row} ${rowHover}`} style={{ animationDelay: '30ms' }} onClick={() => close()}>
+                  <span className={tile} style={{ color: BRAND }}>
+                    <ArrowRight className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className={title}>Open level</span>
+                    <span className={sub}>Runs, stats and progress</span>
+                  </span>
+                </Link>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`${row} ${rowHover}`}
+                  style={{ animationDelay: '60ms' }}
+                  onClick={() => {
+                    close()
+                    onEdit()
+                  }}
+                >
+                  <span className={tile} style={{ color: BRAND }}>
+                    <Pencil className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className={title}>Edit details</span>
+                    <span className={sub}>Name, length, beaten date</span>
+                  </span>
+                </button>
+
+                <button type="button" role="menuitem" className={`${row} ${rowHover}`} style={{ animationDelay: '90ms' }} onClick={copyId}>
+                  <span className={tile} style={{ color: copied ? '#34d399' : '#94a3b8' }}>
+                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={title}>{copied ? 'Copied' : 'Copy ID'}</span>
+                    <span className={`${sub} tabular-nums`}>{level.id}</span>
+                  </span>
+                </button>
+              </div>
+
+              {onDelete && (
+                <div className="border-t border-white/10 py-1">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={`${row} ${rowDanger}`}
+                    style={{ animationDelay: '120ms' }}
+                    onClick={() => {
+                      close()
+                      onDelete()
+                    }}
+                  >
+                    <span className={`${tile} group-hover/i:!border-red-400/50`} style={{ color: '#f87171' }}>
+                      <Trash2 className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className={`${title} !text-red-300 group-hover/i:!text-red-200`}>Delete</span>
+                      <span className={sub}>Remove from your tracker</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+// SPLIT → components/tracker/level-edit-dialog.tsx.   [phase 2: screen, can wait]
+// The "Edit details" window opened from that menu.
+/**
+ * The "Edit details" window. Opened from the three-dot menu on a card.
+ * Fields: name, creator, level length, the day you beat it.
+ * Only the fields you actually changed are sent (onSave gets a LevelPatch). Esc or a click outside closes it.
+ * Add another field later = one more input here + one more line in `submit` + the name in LevelPatch (lib/levels-types.ts).
+ */
+
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+/** ISO date -> "2026-03-14" in YOUR time zone (what <input type="date"> wants). */
+const toInputDate = (iso: string | null) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+/** "2026-03-14" -> ISO at noon local time, so the day can never shift because of the time zone. */
+const fromInputDate = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d, 12).toISOString()
+}
+
+function EditField({ label, htmlFor, hint, children }: { label: string; htmlFor?: string; hint?: string; children: ReactNode }) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="mt-1.5 text-[11px] text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
+const editInput =
+  'h-10 w-full border border-white/12 bg-black/40 px-3 font-mono text-sm font-bold text-white outline-none transition placeholder:font-medium placeholder:text-slate-600 focus:border-[#d4ff3a] focus:shadow-[0_0_0_3px_rgba(212,255,58,.12)]'
+
+function LevelEditDialog({
+  level,
+  onClose,
+  onSave,
+}: {
+  level: LevelItem
+  onClose: () => void
+  onSave: (patch: LevelPatch) => Promise<void>
+}) {
+  const id = useId()
+  const [name, setName] = useState(level.name)
+  const [creator, setCreator] = useState(level.creator)
+  const [mins, setMins] = useState(level.totalSeconds != null ? String(Math.floor(level.totalSeconds / 60)) : '')
+  const [secs, setSecs] = useState(level.totalSeconds != null ? String(level.totalSeconds % 60) : '')
+  const [date, setDate] = useState(toInputDate(level.dateCompleted))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const boxRef = useRef<HTMLDivElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const savingRef = useRef(false)
+  savingRef.current = saving
+  const today = toInputDate(new Date().toISOString())
+
+  // focus the first field, lock the page scroll, give focus back when it closes
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    nameRef.current?.focus()
+    nameRef.current?.select()
+    return () => {
+      document.body.style.overflow = prev
+      before?.focus?.()
+    }
+  }, [])
+
+  // Esc closes; Tab stays inside the window
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !savingRef.current) {
+        e.preventDefault()
+        onClose()
+      }
+      if (e.key === 'Tab') {
+        const els = Array.from(boxRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])') ?? [])
+        if (!els.length) return
+        const first = els[0]
+        const last = els[els.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (saving) return
+    setError('')
+
+    const cleanName = name.trim()
+    if (!cleanName) return setError('The level needs a name.')
+
+    let total: number | null = null
+    if (mins.trim() !== '' || secs.trim() !== '') {
+      const m = Number(mins || 0)
+      const s = Number(secs || 0)
+      if (!Number.isInteger(m) || !Number.isInteger(s) || m < 0 || s < 0 || s > 59) return setError('Length: whole minutes, and seconds from 0 to 59.')
+      total = m * 60 + s
+    }
+
+    const patch: LevelPatch = {}
+    if (cleanName !== level.name) patch.name = cleanName
+    if (creator.trim() !== level.creator) patch.creator = creator.trim()
+    if (total !== level.totalSeconds) patch.totalSeconds = total
+    if (date !== toInputDate(level.dateCompleted)) patch.dateCompleted = date ? fromInputDate(date) : null
+
+    if (Object.keys(patch).length === 0) return onClose() // nothing changed
+
+    setSaving(true)
+    try {
+      await onSave(patch)
+      onClose()
+    } catch {
+      setError('Could not save. Check your connection and try again.')
+      setSaving(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] grid place-items-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !saving && onClose()} aria-hidden="true" />
+
+      <div
+        ref={boxRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        className="relative w-full max-w-md p-px shadow-[0_30px_80px_-10px_rgba(0,0,0,.95)]"
+        style={{ clipPath: poly(16), background: `linear-gradient(135deg, ${BRAND}66, rgba(255,255,255,.12) 40%)` }}
+      >
+        <form onSubmit={submit} className="bg-[#0d1013] p-5 sm:p-6" style={{ clipPath: poly(15) }}>
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.26em]" style={{ color: BRAND }}>
+                Edit details · #{level.id}
+              </p>
+              <h2 id={`${id}-title`} className="mt-1 truncate font-heading text-xl font-extrabold text-white">
+                {level.name}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              aria-label="Close"
+              className="grid size-8 shrink-0 cursor-pointer place-items-center text-slate-500 transition hover:text-white disabled:opacity-40"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <EditField label="Name" htmlFor={`${id}-name`}>
+              <input id={`${id}-name`} ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoComplete="off" className={editInput} />
+            </EditField>
+
+            <EditField label="Creator" htmlFor={`${id}-creator`}>
+              <input id={`${id}-creator`} value={creator} onChange={(e) => setCreator(e.target.value)} maxLength={60} autoComplete="off" className={editInput} />
+            </EditField>
+
+            <EditField label="Level length" htmlFor={`${id}-min`} hint="Leave both empty if you do not know it.">
+              <div className="flex items-center gap-2">
+                <input id={`${id}-min`} inputMode="numeric" placeholder="0" value={mins} onChange={(e) => setMins(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-label="Minutes" className={`${editInput} text-center`} />
+                <span className="font-mono text-xs font-bold text-slate-500">min</span>
+                <input inputMode="numeric" placeholder="0" value={secs} onChange={(e) => setSecs(e.target.value.replace(/\D/g, '').slice(0, 2))} aria-label="Seconds" className={`${editInput} text-center`} />
+                <span className="font-mono text-xs font-bold text-slate-500">sec</span>
+              </div>
+            </EditField>
+
+            <EditField label="Beaten on" htmlFor={`${id}-date`} hint="Leave empty if you have not beaten it.">
+              <div className="flex items-center gap-2">
+                <input id={`${id}-date`} type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} className={`${editInput} [color-scheme:dark]`} />
+                {date && (
+                  <button
+                    type="button"
+                    onClick={() => setDate('')}
+                    className="h-10 shrink-0 cursor-pointer border border-white/12 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 transition hover:border-white/30 hover:text-white"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </EditField>
+          </div>
+
+          <p role="alert" className={`mt-4 text-sm text-red-300 ${error ? '' : 'hidden'}`}>
+            {error}
+          </p>
+
+          <div className="mt-6 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="h-10 cursor-pointer px-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400 transition hover:text-white disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex h-10 min-w-28 cursor-pointer items-center justify-center gap-2 px-5 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
+              style={{ background: BRAND, clipPath: 'polygon(9px 0, 100% 0, 100% 100%, 0 100%, 0 9px)' }}
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+// SPLIT → components/tracker/level-delete-dialog.tsx.   [phase 2: screen, can wait]
+// "Delete this level?" confirmation. Cancel has the focus when it opens, so a stray Enter never deletes anything.
+function LevelDeleteDialog({ level, onClose, onConfirm }: { level: LevelItem; onClose: () => void; onConfirm: () => Promise<void> }) {
+  const id = useId()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const boxRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const busyRef = useRef(false)
+  busyRef.current = busy
+
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    cancelRef.current?.focus()
+    return () => {
+      document.body.style.overflow = prev
+      before?.focus?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busyRef.current) {
+        e.preventDefault()
+        onClose()
+      }
+      if (e.key === 'Tab') {
+        const els = Array.from(boxRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
+        if (!els.length) return
+        const first = els[0]
+        const last = els[els.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const confirm = async () => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await onConfirm()
+      onClose()
+    } catch {
+      setError('Could not delete it. Check your connection and try again.')
+      setBusy(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] grid place-items-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !busy && onClose()} aria-hidden="true" />
+      <div
+        ref={boxRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-text`}
+        className="relative w-full max-w-sm p-px shadow-[0_30px_80px_-10px_rgba(0,0,0,.95)]"
+        style={{ clipPath: poly(16), background: 'linear-gradient(135deg, #ef444499, rgba(255,255,255,.12) 45%)' }}
+      >
+        <div className="bg-[#0d1013] p-5 sm:p-6" style={{ clipPath: poly(15) }}>
+          <div className="mb-4 grid size-11 place-items-center border border-red-400/30 bg-red-500/10 text-red-400">
+            <Trash2 className="size-5" />
+          </div>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.26em] text-red-400">Delete · #{level.id}</p>
+          <h2 id={`${id}-title`} className="mt-1 font-heading text-xl font-extrabold text-white">
+            Delete this level?
+          </h2>
+          <p id={`${id}-text`} className="mt-2 text-sm leading-relaxed text-slate-400">
+            <span className="font-semibold text-slate-200">{level.name}</span> will be removed from your tracker. This cannot be undone.
+          </p>
+
+          <p role="alert" className={`mt-3 text-sm text-red-300 ${error ? '' : 'hidden'}`}>
+            {error}
+          </p>
+
+          <div className="mt-6 flex items-center justify-end gap-2.5">
+            <button
+              ref={cancelRef}
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="h-10 cursor-pointer border border-white/15 px-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-slate-300 transition hover:border-white/40 hover:text-white disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={busy}
+              className="flex h-10 min-w-28 cursor-pointer items-center justify-center gap-2 bg-red-500 px-5 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-red-400 disabled:cursor-wait disabled:opacity-70"
+              style={{ clipPath: 'polygon(9px 0, 100% 0, 100% 100%, 0 100%, 0 9px)' }}
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 // SPLIT → components/tracker/levels-card.tsx.   [phase 2: screen, can wait]
 // The big full-art card of the grid view: art, rank, status, GDDP tier, percent, progress bar, 3D tilt on hover.
 // (components/tracker/level-card.tsx already exists, so give this one another name.)
-function LevelCard({ level, now, index, rank, q = '', hotkey, picked = false }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean }) {
+function LevelCard({ level, now, index, rank, q = '', picked = false, onEdit, onDelete }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean; onEdit?: (l: LevelItem) => void; onDelete?: (l: LevelItem) => void }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -812,7 +1515,7 @@ function LevelCard({ level, now, index, rank, q = '', hotkey, picked = false }: 
   return (
     <div
       id={`lvl-${index}`}
-      className="gl-rise"
+      className="gl-rise group/m relative"
       style={{ animationDelay: `${delay}ms`, ...(picked ? { outline: `2px solid ${BRAND}`, outlineOffset: 5, borderRadius: '1rem', boxShadow: `0 0 40px -6px ${BRAND}88` } : null) }}
     >
       <Link
@@ -853,7 +1556,6 @@ function LevelCard({ level, now, index, rank, q = '', hotkey, picked = false }: 
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               {live && <PlayingTag />}
               <RatingChips level={level} />
-              {hotkey != null && <HotkeyHint n={hotkey} />}
             </div>
           </div>
 
@@ -900,12 +1602,13 @@ function LevelCard({ level, now, index, rank, q = '', hotkey, picked = false }: 
           </div>
         </div>
       </Link>
+      {onEdit && <LevelMenu level={level} onEdit={() => onEdit(level)} onDelete={onDelete ? () => onDelete(level) : undefined} className="absolute -top-[19px] right-6 z-20" variant="card" />}
     </div>
   )
 }
 
 // SPLIT → components/tracker/levels-row.tsx. The list-view version of the card (one row per level).   [phase 2: screen, can wait]
-function LevelRow({ level, now, index, rank, q = '', hotkey, picked = false }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean }) {
+function LevelRow({ level, now, index, rank, q = '', hotkey, picked = false, onEdit, onDelete }: { level: LevelItem; now: number | null; index: number; rank: number; q?: string; hotkey?: number; picked?: boolean; onEdit?: (l: LevelItem) => void; onDelete?: (l: LevelItem) => void }) {
   const tier = toTier(level.rating)
   const ts = TIER_STYLE[tier]
   const accent = accentOf(level)
@@ -916,7 +1619,7 @@ function LevelRow({ level, now, index, rank, q = '', hotkey, picked = false }: {
   const length = level.totalSeconds != null ? formatDuration(level.totalSeconds) : '—'
 
   return (
-    <div id={`lvl-${index}`} className="gl-rise" style={{ animationDelay: `${Math.min(index, 12) * 35}ms`, '--ac': GREEN, ...(picked ? { '--bd': BRAND, filter: `drop-shadow(0 0 14px ${BRAND}99)` } : null) } as CSSProperties}>
+    <div id={`lvl-${index}`} className="gl-rise group/m relative" style={{ animationDelay: `${Math.min(index, 12) * 35}ms`, '--ac': GREEN, ...(picked ? { '--bd': BRAND, filter: `drop-shadow(0 0 14px ${BRAND}99)` } : null) } as CSSProperties}>
       <Link href={`/levels/${level.id}`} className="gl-lift group block">
         <Cut c={12} bd={beaten ? `${GREEN}66` : undefined} className="group-hover:[--bd:var(--ac)]" inner="flex flex-col gap-3 overflow-hidden py-3 pl-5 pr-4 md:flex-row md:items-center md:gap-4">
           <div className="pointer-events-none absolute inset-y-0 right-0 w-2/3 opacity-[0.22] [mask-image:linear-gradient(to_left,#000,transparent)]">
@@ -995,6 +1698,7 @@ function LevelRow({ level, now, index, rank, q = '', hotkey, picked = false }: {
           <ArrowRight className="relative hidden size-4 shrink-0 text-slate-600 transition duration-300 group-hover:translate-x-1 group-hover:text-white md:block" />
         </Cut>
       </Link>
+      {onEdit && <LevelMenu level={level} onEdit={() => onEdit(level)} onDelete={onDelete ? () => onDelete(level) : undefined} className="absolute right-6 top-0 z-20" variant="row" />}
     </div>
   )
 }
@@ -1429,7 +2133,10 @@ function readLocal<T extends string>(key: string, ok: (v: string) => boolean, fa
  *   4. SCREEN (JSX) .... masthead, stats, target banner, ladder, filter bar, cards, pager, slim bar
  * ---------------------------------------------------------------------------- */
 export default function LevelsPage() {
-  const { levels, loading, error, updatedAt, refreshing, retry } = useLevels()
+  const { levels, loading, error, updatedAt, refreshing, retry, patchLevel, removeLevel } = useLevels()
+  // the level whose "Edit details" / "Delete" window is open (null = closed)
+  const [editing, setEditing] = useState<LevelItem | null>(null)
+  const [deleting, setDeleting] = useState<LevelItem | null>(null)
 
   // ── 1. STATE ─────────────────────────────────────────────────────────────
   // `init` is what was saved when you opened a level; it is used so that Back puts everything where you left it.
@@ -1842,6 +2549,7 @@ export default function LevelsPage() {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return // the edit window or a card menu is open
       const el = document.activeElement as HTMLElement | null
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
       const next = e.key === 'ArrowRight' ? curPage + 1 : curPage - 1
@@ -1917,6 +2625,53 @@ export default function LevelsPage() {
       if (idleTimer.current) clearTimeout(idleTimer.current)
     }
   }, [router, persist])
+
+  // ---- refresh: the button and the R key ----
+  // `manual` = you asked for this refresh (button or R key). Only then the little "Updating" pill shows,
+  // so the quiet background refresh when you come Back never pops up anything.
+  const [manual, setManual] = useState(false)
+  const [done, setDone] = useState(false)
+  const sawBusy = useRef(false)
+  const refresh = () => {
+    if (refreshing) return
+    setDone(false)
+    setManual(true)
+    retry()
+  }
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  // show "Updating" while it loads, then "Updated" for a moment
+  useEffect(() => {
+    if (!manual) return
+    if (refreshing) {
+      sawBusy.current = true
+      return
+    }
+    if (!sawBusy.current) return // the refresh has not started yet
+    sawBusy.current = false
+    setDone(true)
+    const t = setTimeout(() => {
+      setDone(false)
+      setManual(false)
+    }, 1800)
+    return () => clearTimeout(t)
+  }, [manual, refreshing])
+
+  // R refreshes (not while typing, not while a menu or window is open; Ctrl+R is still the browser's reload)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'r' && e.key !== 'R') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (popupOpenRef.current || document.querySelector('[role="dialog"], [role="menu"]')) return
+      e.preventDefault()
+      refreshRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // bring the selected card into view (only if it is not fully visible; the slim bar covers the top 64px)
   useEffect(() => {
@@ -2197,14 +2952,15 @@ export default function LevelsPage() {
             </div>
             {/* "Updated 2 min ago" + a refresh button (asks the backend again, the list updates in place) */}
             <button
-              onClick={retry}
+              onClick={refresh}
               disabled={refreshing}
-              aria-label="Refresh levels"
+              aria-label="Refresh levels (R)"
               className={`${mono} group flex items-center gap-2 border border-white/10 bg-black/30 px-3 py-2 transition hover:border-white/25 disabled:cursor-wait`}
               style={{ color: BRAND }}
             >
               <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : 'transition group-hover:rotate-180'}`} />
               <span suppressHydrationWarning>{refreshing ? 'Updating' : updatedAt ? `Updated ${relativeTime(new Date(updatedAt).toISOString(), now)}` : 'Auto-tracking'}</span>
+              <kbd className="hidden border border-white/20 px-1 py-px text-[9px] font-bold text-slate-400 sm:block">R</kbd>
             </button>
           </div>
 
@@ -2648,13 +3404,13 @@ export default function LevelsPage() {
         ) : view === 'grid' ? (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} />
+              <LevelCard key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} onEdit={setEditing} onDelete={setDeleting} />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5" onClickCapture={persist}>
             {shown.map((l, i) => (
-              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} />
+              <LevelRow key={l.id} level={l} now={now} index={i} rank={pageStart + i + 1} q={query} hotkey={i + 1} picked={i === pick} onEdit={setEditing} onDelete={setDeleting} />
             ))}
           </div>
         )}
@@ -2687,6 +3443,42 @@ export default function LevelsPage() {
           </Cut>
         </div>
       )}
+
+      {/* ------------------------------------------------------------ Refresh pill   shows at the bottom of the screen while a refresh you asked for is loading, wherever you are scrolled to */}
+      {(() => {
+        const on = !loading && manual && (refreshing || done)
+        const failed = done && error
+        return (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-hidden={!on}
+            className={`pointer-events-none fixed bottom-5 z-[60] -translate-x-1/2 transition duration-300 ${on ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'}`}
+            style={{ left: 'calc(50% + var(--sb-w, 0px) / 2)' }}
+          >
+            <div
+              className="p-px shadow-[0_18px_50px_-10px_rgba(0,0,0,.9)]"
+              style={{ clipPath: poly(11), background: failed ? '#ef4444' : refreshing ? BRAND : `${GREEN}` }}
+            >
+              <div className="flex h-10 items-center gap-2.5 bg-[#0d1013] px-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white" style={{ clipPath: poly(10) }}>
+                {refreshing ? (
+                  <RefreshCw className="size-4 animate-spin" style={{ color: BRAND }} />
+                ) : failed ? (
+                  <AlertTriangle className="size-4 text-red-400" />
+                ) : (
+                  <Check className="size-4" style={{ color: GREEN }} />
+                )}
+                {refreshing ? 'Updating levels' : failed ? 'Update failed' : 'Levels updated'}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ------------------------------------------------------------ Edit window   opened from the three-dot menu on a card */}
+      {editing && <LevelEditDialog level={editing} onClose={() => setEditing(null)} onSave={(patch) => patchLevel(editing.id, patch)} />}
+
+      {deleting && <LevelDeleteDialog level={deleting} onClose={() => setDeleting(null)} onConfirm={() => removeLevel(deleting.id)} />}
 
       {/* ------------------------------------------------------------ Jump buttons   the round back-to-top button (fixed, bottom right) */}
       <div
